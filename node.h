@@ -13,5 +13,7 @@
 #include <signal.h>
 
 
-void handleArguments(int argc, char **argv, int *port, char **address);
-int createSocket(int port, int type);
+void handleArguments(int argc, char **argv, int *trackerPort, char **address);
+struct socketData createSocket(int socketPort, int type);
+void retrieveNodeIp(int trackerPort, char *address, struct socketData sd, uint8_t **ip);
+void receiveStun();
