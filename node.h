@@ -13,7 +13,10 @@
 #include <signal.h>
 
 
-void handleArguments(int argc, char **argv, int *trackerPort, char **address);
+void handleArguments(int argc, char **argv, int *port, char **address);
 struct socketData createSocket(int socketPort, int type);
-void retrieveNodeIp(int trackerPort, char *address, struct socketData sd, uint8_t **ip);
-void receiveStun();
+void retrieveNodeIp(struct socketData trackerSend, struct socketData trackerReceive, uint8_t **ip);
+void sendPDU(struct socketData trackerSend, void *pduSend);
+uint8_t *receivePDU(struct socketData trackerReceive);
+struct sockaddr_in getSocketAddress(int trackerPort, char *address);
+struct NET_GET_NODE_RESPONSE_PDU getNodePDU(struct socketData trackerSend, struct socketData trackerReceive);
