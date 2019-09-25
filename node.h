@@ -20,3 +20,4 @@ void sendPDU(struct socketData trackerSend, void *pduSend);
 uint8_t *receivePDU(struct socketData trackerReceive);
 struct sockaddr_in getSocketAddress(int trackerPort, char *address);
 struct NET_GET_NODE_RESPONSE_PDU getNodePDU(struct socketData trackerSend, struct socketData trackerReceive);
+void sendNetAlive(struct socketData trackerSend, int port);

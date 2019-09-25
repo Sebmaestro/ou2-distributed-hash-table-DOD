@@ -10,8 +10,6 @@ struct socketData {
 };
 
 
-
-
 int main(int argc, char **argv) {
 
   int trackerPort;
@@ -39,12 +37,13 @@ int main(int argc, char **argv) {
   retrieveNodeIp(trackerSend, trackerReceive, &nodeIp);
   printf("Node IP: %s\n", nodeIp);
   getNodePDU(trackerSend, trackerReceive);
+  sendNetAlive(trackerSend, trackerReceive.port);
 
   //struct pollfd fds[MAXCLIENTS];
 
   //listen(trackerReceive, 10);
 
-  //TODO: NETALIVE OCH INITIERA HASHTABLE, SEDAN IMPLEMENTERA NET JOIN
+  //TODO: HASHTABLE PÅ NOD - NETJOIN sen 
 
 
   shutdown(successorSock.socketFd, SHUT_RDWR);
@@ -56,28 +55,14 @@ int main(int argc, char **argv) {
   return 0;
 }
 
-void sendNetAlive(int trackerPort, char *address) {
+void sendNetAlive(struct socketData trackerSend, int port) {
 
-  printf("system.exit(-5000)\ndö");
-}
+  struct NET_ALIVE_PDU nap;
+  nap.type = NET_ALIVE;
+  nap.pad = 0;
+  nap.port = htons(port);
 
-uint8_t *receivePDU(struct socketData trackerReceive) {
-  uint8_t *buffer = calloc(256, sizeof(uint8_t));
-  socklen_t len = sizeof(trackerReceive.address);
-
-  if (recvfrom(trackerReceive.socketFd, buffer, 256, MSG_WAITALL,
-               (struct sockaddr*)&trackerReceive.address, &len) == -1) {
-    perror("recvfrom");
-  } else {
-    return buffer;
-  }
-  return NULL;
-}
-
-void sendPDU(struct socketData trackerSend, void *pduSend) {
-
-  sendto(trackerSend.socketFd, (uint8_t*)pduSend, sizeof(pduSend), 0,
-         (struct sockaddr*)&trackerSend.address, sizeof(trackerSend.address));
+  sendPDU(trackerSend, &nap);
 }
 
 struct NET_GET_NODE_RESPONSE_PDU getNodePDU(struct socketData trackerSend,
@@ -104,22 +89,6 @@ struct NET_GET_NODE_RESPONSE_PDU getNodePDU(struct socketData trackerSend,
 }
 
 /**
- * Creates a sockaddress to be used when talking with the (tracker). Struct
- * contains port and address to tracker cause obvious reasons
- *
- */
-struct sockaddr_in getSocketAddress(int port, char *address) {
-
-  struct sockaddr_in sockAddress;
-
-  sockAddress.sin_family = AF_INET;
-  sockAddress.sin_port = htons(port);
-  sockAddress.sin_addr.s_addr = inet_addr(address);
-
-  return sockAddress;
-}
-
-/**
  * Retrieves ip for node with STUN request and stores it in the ip-pointer.
  */
 void retrieveNodeIp(struct socketData trackerSend, struct socketData trackerReceive,
@@ -140,6 +109,43 @@ void retrieveNodeIp(struct socketData trackerSend, struct socketData trackerRece
   }
   free(buff);
 }
+
+uint8_t *receivePDU(struct socketData trackerReceive) {
+  uint8_t *buffer = calloc(256, sizeof(uint8_t));
+  socklen_t len = sizeof(trackerReceive.address);
+
+  if (recvfrom(trackerReceive.socketFd, buffer, 256, MSG_WAITALL,
+               (struct sockaddr*)&trackerReceive.address, &len) == -1) {
+    perror("recvfrom");
+  } else {
+    return buffer;
+  }
+  return NULL;
+}
+
+void sendPDU(struct socketData trackerSend, void *pduSend) {
+
+  sendto(trackerSend.socketFd, (uint8_t*)pduSend, sizeof(pduSend), 0,
+         (struct sockaddr*)&trackerSend.address, sizeof(trackerSend.address));
+}
+
+/**
+ * Creates a sockaddress to be used when talking with the (tracker). Struct
+ * contains port and address to tracker cause obvious reasons
+ *
+ */
+struct sockaddr_in getSocketAddress(int port, char *address) {
+
+  struct sockaddr_in sockAddress;
+
+  sockAddress.sin_family = AF_INET;
+  sockAddress.sin_port = htons(port);
+  sockAddress.sin_addr.s_addr = inet_addr(address);
+
+  return sockAddress;
+}
+
+
 
 void handleArguments(int argc, char **argv, int *port, char **address) {
 	if (argc != 3) {
