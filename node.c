@@ -1,7 +1,10 @@
 #include "node.h"
 #include "c_header/pdu.h"
+#include "hashtable/hash.h"
+#include "hashtable/hash_table.h"
 
 #define MAXCLIENTS 6
+#define BUFFERSIZE 256
 
 struct socketData {
   int socketFd;
@@ -29,21 +32,64 @@ int main(int argc, char **argv) {
   trackerSend.address = getSocketAddress(trackerSend.port, address);
 
 
-
-
-
   /* This is the node ip we get when asking the tracker for it :^) */
   uint8_t *nodeIp;
   retrieveNodeIp(trackerSend, trackerReceive, &nodeIp);
   printf("Node IP: %s\n", nodeIp);
-  getNodePDU(trackerSend, trackerReceive);
-  sendNetAlive(trackerSend, trackerReceive.port);
 
-  //struct pollfd fds[MAXCLIENTS];
+  struct NET_GET_NODE_RESPONSE_PDU ngnrp;
+
+  ngnrp = getNodePDU(trackerSend, trackerReceive);
+
+  struct hash_table* hashTable;
+  joinNetwork(ngnrp);
+  /* Empty response, I.E no node in network */
+  if (ntohs(ngnrp.port == 0) && ngnrp.address[0] == 0) {
+    printf("No other nodes in the network, initializing hashtable.\n");
+    hashTable = table_create(hash_ssn, 255);
+  } else { /* Non empty response */
+    printf("Net Join inc\n");
+    /* Net join */
+  }
+
+  struct pollfd pollFds[MAXCLIENTS];
+  pollFds[0].fd = STDIN_FILENO;
+  pollFds[0].events = POLLIN;
+  int currentClients = 1;
+  bool loop = true;
+  while (loop) {
+    /*Ping tracker*/
+    sendNetAlive(trackerSend, trackerReceive.port);
+
+    int ret = poll(pollFds, currentClients, 7000);
+    if(ret <= 0){
+      fprintf(stderr, "Waited 7 seconds. No data received from a client.");
+			fprintf(stderr, " Retrying...\n");
+    }
+    for (size_t i = 0; i < currentClients; i++){
+      if (pollFds[i].revents & POLLIN && i == 0) {
+        /*Reading from stdin*/
+        char *buffer = calloc(BUFFERSIZE, sizeof(char));
+				int readValue = read(pollFds[i].fd, buffer, BUFFERSIZE-1);
+        if(strcmp("quit\n", buffer) == 0 || readValue <= 0){
+          printf("Exiting loop\n");
+          free(buffer);
+          loop = false;
+          break;
+        }
+        free(buffer);
+      }
+    }
+  }
+
+
+
+
+
 
   //listen(trackerReceive, 10);
 
-  //TODO: HASHTABLE PÅ NOD - NETJOIN sen 
+  //TODO: HASHTABLE PÅ NOD - NETJOIN sen
 
 
   shutdown(successorSock.socketFd, SHUT_RDWR);
@@ -53,6 +99,12 @@ int main(int argc, char **argv) {
   shutdown(agentSock.socketFd, SHUT_RDWR);
 
   return 0;
+}
+
+void joinNetwork(struct NET_GET_NODE_RESPONSE_PDU ngnrp){
+  printf("Sending NET_JOIN to: %s, on port: %d\n", ngnrp.address, htons(ngnrp.port));
+  struct NET_JOIN_PDU ntp;
+  ntp.type = NET_JOIN;
 }
 
 void sendNetAlive(struct socketData trackerSend, int port) {
@@ -80,9 +132,9 @@ struct NET_GET_NODE_RESPONSE_PDU getNodePDU(struct socketData trackerSend,
 
   if (buff[0] == NET_GET_NODE_RESPONSE) {
       memcpy(&ngnrp, buff, sizeof(struct NET_GET_NODE_RESPONSE_PDU));
-      printf("pdu :%d\n", ngnrp.type);
-      printf("adde = %s\n", ngnrp.address);
-      printf("porra = %d\n", ntohs(ngnrp.port));
+      printf("pdu-type: %d\n", ngnrp.type);
+      printf("address: %s\n", ngnrp.address);
+      printf("port: %d\n", ntohs(ngnrp.port));
   }
   free(buff);
   return ngnrp;
