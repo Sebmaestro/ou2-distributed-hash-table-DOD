@@ -15,11 +15,11 @@
 
 void handleArguments(int argc, char **argv, int *port, char **address);
 struct socketData createSocket(int socketPort, int type);
-void retrieveNodeIp(struct socketData trackerSock, struct sockaddr_in trackerAddress, uint8_t **ip);
-void sendPDU(int socket, struct sockaddr_in address, void *pduSend);
+uint8_t *retrieveNodeIp(struct socketData trackerSock, struct sockaddr_in trackerAddress);
+void sendPDU(int socket, struct sockaddr_in address, void *pduSend, int size);
 uint8_t *receivePDU(int socket);
 struct sockaddr_in getSocketAddress(int trackerPort, char *address);
 struct NET_GET_NODE_RESPONSE_PDU getNodePDU(struct socketData trackerSock, struct sockaddr_in trackerAddress);
-void sendNetAlive(struct socketData trackerSock, struct sockaddr_in trackerAddress);
+void sendNetAlive(int trackerSocket, struct socketData agentSock, struct sockaddr_in trackerAddress);
 void joinNetwork(struct NET_GET_NODE_RESPONSE_PDU ngnrp, struct socketData predSock,
                                   uint8_t *ip, struct socketData agentSock);
