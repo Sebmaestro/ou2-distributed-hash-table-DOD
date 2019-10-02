@@ -42,7 +42,7 @@ int main(int argc, char **argv) {
   ngnrp = getNodePDU(trackerSend, UDPSocket);
 
   struct hash_table* hashTable;
-  joinNetwork(ngnrp);
+  //joinNetwork(ngnrp);
   /* Empty response, I.E no node in network */
   if (ntohs(ngnrp.port == 0) && ngnrp.address[0] == 0) {
     printf("No other nodes in the network, initializing hashtable.\n");
@@ -85,8 +85,6 @@ int main(int argc, char **argv) {
 
 
 
-
-
   //listen(UDPSocket, 10);
 
   //TODO: HASHTABLE PÅ NOD - NETJOIN sen
@@ -102,6 +100,7 @@ int main(int argc, char **argv) {
 }
 
 void joinNetwork(struct NET_GET_NODE_RESPONSE_PDU ngnrp, struct socketData predSock, uint8_t *ip) {
+  /*
   printf("Sending NET_JOIN to: %s, on port: %d\n", ngnrp.address, ntohs(ngnrp.port));
   struct NET_JOIN_PDU njp;
   njp.TYPE = NET_JOIN;
@@ -111,7 +110,7 @@ void joinNetwork(struct NET_GET_NODE_RESPONSE_PDU ngnrp, struct socketData predS
   njp.MAX_SPAN = 0;
   njp.MAX_ADDRESS = 0;
   njp.MAX_PORT = htons(0);
-
+*/
 
 
 
@@ -140,11 +139,16 @@ struct NET_GET_NODE_RESPONSE_PDU getNodePDU(struct socketData trackerSend,
   uint8_t *buff = receivePDU(UDPSocket);
   struct NET_GET_NODE_RESPONSE_PDU ngnrp;
 
+
   if (buff[0] == NET_GET_NODE_RESPONSE) {
-      memcpy(&ngnrp, buff, sizeof(struct NET_GET_NODE_RESPONSE_PDU));
-      printf("pdu-type: %d\n", ngnrp.type);
-      printf("address: %s\n", ngnrp.address);
-      printf("port: %d\n", ntohs(ngnrp.port));
+    memcpy(&ngnrp, buff, sizeof(struct NET_GET_NODE_RESPONSE_PDU));
+    printf("pdu-type: %d\n", ngnrp.type);
+    printf("address: %s\n", ngnrp.address);
+    printf("port: %d\n", ntohs(ngnrp.port));
+  } else {
+    ngnrp.type = 0;
+    ngnrp.address[0] = '\0';
+    ngnrp.port = 0;
   }
   free(buff);
   return ngnrp;
