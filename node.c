@@ -30,7 +30,7 @@ int main(int argc, char **argv) {
   // trackerSend.port = trackerPort;
 
   /* This is the address we need to speak with tracker heheh :⁾ */
-  struct sockaddr_in trackerAddress= getSocketAddress(trackerPort, address);
+  struct sockaddr_in trackerAddress = getSocketAddress(trackerPort, address);
 
 
   /* This is the node ip we get when asking the tracker for it :^) */
@@ -43,19 +43,21 @@ int main(int argc, char **argv) {
   ngnrp = getNodePDU(trackerSock, trackerAddress);
 
   struct hash_table* hashTable;
-  //joinNetwork(ngnrp);
   /* Empty response, I.E no node in network */
   if (ntohs(ngnrp.port == 0) && ngnrp.address[0] == 0) {
     printf("No other nodes in the network, initializing hashtable.\n");
     hashTable = table_create(hash_ssn, 255);
   } else { /* Non empty response */
     printf("Net Join inc\n");
+    joinNetwork(ngnrp, predecessorSock, nodeIp, agentSock);
     /* Net join */
   }
 
   struct pollfd pollFds[MAXCLIENTS];
   pollFds[0].fd = STDIN_FILENO;
   pollFds[0].events = POLLIN;
+  pollFds[1].fd = agentSock.socketFd;
+  pollFds[1].events = POLLIN;
   int currentClients = 1;
   bool loop = true;
   while (loop) {
@@ -79,6 +81,13 @@ int main(int argc, char **argv) {
           break;
         }
         free(buffer);
+      } else if(pollFds[i].revents & POLLIN){
+        uint8_t *buffer = calloc(256, sizeof(uint8_t));
+				int readValue = read(pollFds[i].fd, buffer, BUFFERSIZE-1);
+        if(buffer[0] == NET_JOIN){
+          printf("%s\n", buffer);
+        }
+        free(buffer);
       }
     }
   }
@@ -100,7 +109,9 @@ int main(int argc, char **argv) {
   return 0;
 }
 
-void joinNetwork(struct NET_GET_NODE_RESPONSE_PDU ngnrp, struct socketData predSock, uint8_t *ip, struct ) {
+void joinNetwork(struct NET_GET_NODE_RESPONSE_PDU ngnrp, struct socketData predSock,
+                                  uint8_t *ip, struct socketData agentSock) {
+
   printf("Sending NET_JOIN to: %s, on port: %d\n", ngnrp.address, ntohs(ngnrp.port));
   struct NET_JOIN_PDU njp;
   njp.type = NET_JOIN;
@@ -112,10 +123,9 @@ void joinNetwork(struct NET_GET_NODE_RESPONSE_PDU ngnrp, struct socketData predS
   njp.max_port = htons(0);
 
 
+  struct sockaddr_in nodeAddress = getSocketAddress(ntohs(ngnrp.port), ngnrp.address);
 
-  // struct
-  //
-  // sendPDU();
+  sendPDU(agentSock.port, nodeAddress, &njp);
 
 
 }
@@ -127,7 +137,7 @@ void sendNetAlive(struct socketData trackerSock, struct sockaddr_in trackerAddre
   nap.pad = 0;
   nap.port = htons(trackerSock.port);
 
-  sendPDU(trackerSock.port, trackerAddress, &nap);
+  sendPDU(trackerSock.socketFd, trackerAddress, &nap);
 }
 
 struct NET_GET_NODE_RESPONSE_PDU getNodePDU(struct socketData trackerSock, struct sockaddr_in trackerAddress) {

@@ -21,4 +21,5 @@ uint8_t *receivePDU(int socket);
 struct sockaddr_in getSocketAddress(int trackerPort, char *address);
 struct NET_GET_NODE_RESPONSE_PDU getNodePDU(struct socketData trackerSock, struct sockaddr_in trackerAddress);
 void sendNetAlive(struct socketData trackerSock, struct sockaddr_in trackerAddress);
-void joinNetwork(struct NET_GET_NODE_RESPONSE_PDU ngnrp, struct socketData predSock, uint8_t *ip);
+void joinNetwork(struct NET_GET_NODE_RESPONSE_PDU ngnrp, struct socketData predSock,
+                                  uint8_t *ip, struct socketData agentSock);
