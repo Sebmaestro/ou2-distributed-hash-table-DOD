@@ -9,10 +9,9 @@
 struct socketData {
   int socketFd;
   int port;
-  struct sockaddr_in address;
 };
 
-
+//https://git.cs.umu.se/courses/5dv197ht19/tree/master/assignment2
 int main(int argc, char **argv) {
 
   int trackerPort;
@@ -23,23 +22,25 @@ int main(int argc, char **argv) {
   struct socketData successorSock = createSocket(0, SOCK_STREAM);
   struct socketData predecessorSock = createSocket(0, SOCK_STREAM);
   struct socketData newNodeSock = createSocket(0, SOCK_STREAM);
-  struct socketData UDPSocket = createSocket(0, SOCK_DGRAM);
+  struct socketData trackerSock = createSocket(0, SOCK_DGRAM);
   struct socketData agentSock = createSocket(0, SOCK_DGRAM);
 
-  struct socketData trackerSend;
-  trackerSend.socketFd = UDPSocket.socketFd;
-  trackerSend.port = trackerPort;
-  trackerSend.address = getSocketAddress(trackerSend.port, address);
+  // struct socketData trackerSend;
+  // trackerSend.socketFd = trackerSock.socketFd;
+  // trackerSend.port = trackerPort;
+
+  /* This is the address we need to speak with tracker heheh :⁾ */
+  struct sockaddr_in trackerAddress= getSocketAddress(trackerPort, address);
 
 
   /* This is the node ip we get when asking the tracker for it :^) */
   uint8_t *nodeIp;
-  retrieveNodeIp(trackerSend, UDPSocket, &nodeIp);
+  retrieveNodeIp(trackerSock, trackerAddress, &nodeIp);
   printf("Node IP: %s\n", nodeIp);
 
   struct NET_GET_NODE_RESPONSE_PDU ngnrp;
 
-  ngnrp = getNodePDU(trackerSend, UDPSocket);
+  ngnrp = getNodePDU(trackerSock, trackerAddress);
 
   struct hash_table* hashTable;
   //joinNetwork(ngnrp);
@@ -59,7 +60,7 @@ int main(int argc, char **argv) {
   bool loop = true;
   while (loop) {
     /*Ping tracker*/
-    sendNetAlive(trackerSend, UDPSocket.port);
+    sendNetAlive(trackerSock, trackerAddress);
 
     int ret = poll(pollFds, currentClients, 7000);
     if(ret <= 0){
@@ -85,7 +86,7 @@ int main(int argc, char **argv) {
 
 
 
-  //listen(UDPSocket, 10);
+  //listen(trackerSock, 10);
 
   //TODO: HASHTABLE PÅ NOD - NETJOIN sen
 
@@ -93,50 +94,52 @@ int main(int argc, char **argv) {
   shutdown(successorSock.socketFd, SHUT_RDWR);
   shutdown(predecessorSock.socketFd, SHUT_RDWR);
   shutdown(newNodeSock.socketFd, SHUT_RDWR);
-  shutdown(UDPSocket.socketFd, SHUT_RDWR);
+  shutdown(trackerSock.socketFd, SHUT_RDWR);
   shutdown(agentSock.socketFd, SHUT_RDWR);
 
   return 0;
 }
 
-void joinNetwork(struct NET_GET_NODE_RESPONSE_PDU ngnrp, struct socketData predSock, uint8_t *ip) {
-  /*
+void joinNetwork(struct NET_GET_NODE_RESPONSE_PDU ngnrp, struct socketData predSock, uint8_t *ip, struct ) {
   printf("Sending NET_JOIN to: %s, on port: %d\n", ngnrp.address, ntohs(ngnrp.port));
   struct NET_JOIN_PDU njp;
-  njp.TYPE = NET_JOIN;
-  njp.SRC_ADDRESS = ip;
+  njp.type = NET_JOIN;
+  memcpy(njp.src_address, ip, ADDRESS_LENGTH);
   njp.PAD = 0;
-  njp.SRC_PORT = htons(predSock.port);
-  njp.MAX_SPAN = 0;
-  njp.MAX_ADDRESS = 0;
-  njp.MAX_PORT = htons(0);
-*/
+  njp.src_port = htons(predSock.port);
+  njp.max_span = 0;
+  njp.max_address[0] = '\0';
+  njp.max_port = htons(0);
 
+
+
+  // struct
+  //
+  // sendPDU();
 
 
 }
 
-void sendNetAlive(struct socketData trackerSend, int port) {
+void sendNetAlive(struct socketData trackerSock, struct sockaddr_in trackerAddress) {
 
   struct NET_ALIVE_PDU nap;
   nap.type = NET_ALIVE;
   nap.pad = 0;
-  nap.port = htons(port);
+  nap.port = htons(trackerSock.port);
 
-  sendPDU(trackerSend, &nap);
+  sendPDU(trackerSock.port, trackerAddress, &nap);
 }
 
-struct NET_GET_NODE_RESPONSE_PDU getNodePDU(struct socketData trackerSend,
-                                            struct socketData UDPSocket) {
+struct NET_GET_NODE_RESPONSE_PDU getNodePDU(struct socketData trackerSock, struct sockaddr_in trackerAddress) {
 
   struct NET_GET_NODE_PDU ngnp;
   ngnp.type = NET_GET_NODE;
   ngnp.pad = 0;
-  ngnp.port = htons(UDPSocket.port);
+  ngnp.port = htons(trackerSock.port);
 
-  sendPDU(trackerSend, &ngnp);
+  sendPDU(trackerSock.socketFd, trackerAddress, &ngnp);
 
-  uint8_t *buff = receivePDU(UDPSocket);
+  uint8_t *buff = receivePDU(trackerSock.socketFd);
   struct NET_GET_NODE_RESPONSE_PDU ngnrp;
 
 
@@ -157,16 +160,17 @@ struct NET_GET_NODE_RESPONSE_PDU getNodePDU(struct socketData trackerSend,
 /**
  * Retrieves ip for node with STUN request and stores it in the ip-pointer.
  */
-void retrieveNodeIp(struct socketData trackerSend, struct socketData UDPSocket,
+void retrieveNodeIp(struct socketData trackerSock, struct sockaddr_in trackerAddress,
                                                             uint8_t **ip) {
   struct STUN_LOOKUP_PDU slp;
   slp.type = STUN_LOOKUP;
   slp.PAD = 0;
-  slp.port = htons(UDPSocket.port);
+  slp.port = htons(trackerSock.port);
 
-  sendPDU(trackerSend, &slp);
+  sendPDU(trackerSock.socketFd, trackerAddress, &slp);
 
-  uint8_t *buff = receivePDU(UDPSocket);
+  uint8_t *buff = receivePDU(trackerSock.socketFd);
+
   struct STUN_RESPONSE_PDU srp;
   if (buff[0] == STUN_RESPONSE) {
       memcpy(&srp, buff, sizeof(struct STUN_RESPONSE_PDU));
@@ -176,23 +180,27 @@ void retrieveNodeIp(struct socketData trackerSend, struct socketData UDPSocket,
   free(buff);
 }
 
-uint8_t *receivePDU(struct socketData UDPSocket) {
+uint8_t *receivePDU(int socket) {
   uint8_t *buffer = calloc(256, sizeof(uint8_t));
-  socklen_t len = sizeof(UDPSocket.address);
+  struct sockaddr_in sender;
+  socklen_t len = sizeof(sender);
 
-  if (recvfrom(UDPSocket.socketFd, buffer, 256, MSG_WAITALL,
-               (struct sockaddr*)&UDPSocket.address, &len) == -1) {
+
+
+  if (recvfrom(socket, buffer, 256, MSG_WAITALL,
+               (struct sockaddr*)&sender, &len) == -1) {
     perror("recvfrom");
   } else {
+    printf("Received message from %s\n", inet_ntoa(sender.sin_addr));
     return buffer;
   }
   return NULL;
 }
 
-void sendPDU(struct socketData trackerSend, void *pduSend) {
+void sendPDU(int socket, struct sockaddr_in address, void *pduSend) {
 
-  sendto(trackerSend.socketFd, (uint8_t*)pduSend, sizeof(pduSend), 0,
-         (struct sockaddr*)&trackerSend.address, sizeof(trackerSend.address));
+  sendto(socket, (uint8_t*)pduSend, sizeof(pduSend), 0,
+         (struct sockaddr*)&address, sizeof(address));
 }
 
 /**
@@ -210,7 +218,6 @@ struct sockaddr_in getSocketAddress(int port, char *address) {
 
   return sockAddress;
 }
-
 
 
 void handleArguments(int argc, char **argv, int *port, char **address) {
@@ -256,7 +263,6 @@ struct socketData createSocket(int socketPort, int type) {
       exit(-5);
   }
 
-  socketData.address = inAddr;
 
   /* Get socket port */
   socklen_t len = sizeof(inAddr);
