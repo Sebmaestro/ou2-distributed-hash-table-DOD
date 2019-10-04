@@ -11,6 +11,15 @@ struct socketData {
   int port;
 };
 
+struct node {
+  int hashMin;
+  int hashMax;
+  uint8_t *ip;
+  struct node *predecessor;
+  struct node *successor;
+  struct hash_table *hashTable;
+};
+
 //https://git.cs.umu.se/courses/5dv197ht19/tree/master/assignment2
 int main(int argc, char **argv) {
 
@@ -32,10 +41,11 @@ int main(int argc, char **argv) {
   /* This is the address we need to speak with tracker heheh :⁾ */
   struct sockaddr_in trackerAddress = getSocketAddress(trackerPort, address);
 
+  struct node *node = malloc(sizeof(struct node));
 
   /* This is the node ip we get when asking the tracker for it :^) */
-  uint8_t* nodeIp = retrieveNodeIp(trackerSock, trackerAddress);
-  printf("Node IP: %s\n", nodeIp);
+  node->ip = retrieveNodeIp(trackerSock, trackerAddress);
+  printf("Node IP: %s\n", node->ip);
 
   struct NET_GET_NODE_RESPONSE_PDU ngnrp;
   ngnrp = getNodePDU(trackerSock, trackerAddress);
@@ -45,11 +55,15 @@ int main(int argc, char **argv) {
   /* Empty response, I.E no node in network */
   if (ntohs(ngnrp.port == 0) && ngnrp.address[0] == 0) {
     printf("No other nodes in the network, initializing hashtable.\n");
-    hashTable = table_create(hash_ssn, 255);
+    node->hashTable = table_create(hash_ssn, 256);
+    node->hashMin = 0;
+    node->hashMax = 255;
   } else { /* Non empty response */
-    printf("Net Join inc\n");
-    joinNetwork(ngnrp, predecessorSock, nodeIp, agentSock);
     /* Net join */
+    printf("Net Join inc\n");
+    joinNetwork(ngnrp, predecessorSock, node->ip, agentSock);
+     //table_shrink(hashTable, )
+
   }
 
   struct pollfd pollFds[MAXCLIENTS];
@@ -83,6 +97,7 @@ int main(int argc, char **argv) {
       } else if(pollFds[i].revents & POLLIN){
         uint8_t *buffer = calloc(256, sizeof(uint8_t));
 				int readValue = read(pollFds[i].fd, buffer, BUFFERSIZE-1);
+        printf("mammagame %d\n", readValue);
         if(buffer[0] == NET_JOIN){
           printf("%s\n", buffer);
         }
@@ -106,6 +121,30 @@ int main(int argc, char **argv) {
   shutdown(agentSock.socketFd, SHUT_RDWR);
 
   return 0;
+}
+/**
+ *
+ *
+ *
+ *
+ */
+void getHashRanges(struct node *node) {
+
+  float minP;
+  float maxP;
+
+  float minS;
+  float maxS;
+
+  minP = (float)node->predecessor->hashMin;
+  maxS = (float)node->predecessor->hashMax;
+  maxP = floor((maxP - minP) /2 ) + minP;
+  minS = maxP + 1;
+
+  node->hashMax = (int)maxP;
+  node->hashMin = (int)minP;
+
+  //TODO: SENT NET JOIN RESPONSE WITH minS AND maxS.
 }
 
 /**
