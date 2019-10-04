@@ -55,6 +55,7 @@ int main(int argc, char **argv) {
     int predecessor = accept(newNodeSock.socketFd, (struct sockaddr*)&predAddr, &len);
 
     printf("Accepted predecessor on socket: %d\n", predecessor);
+    predecessorSock.socketFd = predecessor;
      //table_shrink(hashTable, )
 
   }
@@ -158,12 +159,14 @@ void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
     getHashRanges(node, &njrp.range_start, &njrp.range_end);
 
     struct sockaddr_in sockAdr = getSocketAddress(ntohs(njp.src_port), njp.src_address);
+    printf("Trying to connect to %s on port: %d\n", inet_ntoa(sockAdr.sin_addr), htons(sockAdr.sin_port));
     int con = connect(socket, (struct sockaddr*)&sockAdr, sizeof(sockAdr));
     printf("con = %d\n", con);
     perror("Connect");
 
     //No other nodes in the network, send response now.
 
+    // TODOOOOOOOOOOOOOOOOOOOOOOOOOOOO SEND PDU TILL NYA NODEN
   }
 
 
@@ -209,7 +212,7 @@ void joinNetwork(struct NET_GET_NODE_RESPONSE_PDU ngnrp, struct socketData predS
   //memcpy(njp.src_address, ip, sizeof(njp.src_address));
   strcpy(njp.src_address, (char*)ip);
   njp.PAD = 0;
-  njp.src_port = htons(predSock.port);
+  njp.src_port = htons(agentSock.port);
   njp.PAD2 = 0;
   njp.max_span = 0;
   njp.max_address[0] = '\0';
