@@ -54,9 +54,21 @@ int main(int argc, char **argv) {
   struct pollfd pollFds[MAXCLIENTS];
   pollFds[0].fd = STDIN_FILENO;
   pollFds[0].events = POLLIN;
-  pollFds[1].fd = agentSock.socketFd;
+  pollFds[1].fd = successorSock.socketFd;
   pollFds[1].events = POLLIN;
-  int currentClients = 1;
+  pollFds[2].fd = predecessorSock.socketFd;
+  pollFds[2].events = POLLIN;
+  pollFds[3].fd = newNodeSock.socketFd;
+  pollFds[3].events = POLLIN;
+  pollFds[4].fd = trackerSock.socketFd;
+  pollFds[4].events = POLLIN;
+  pollFds[5].fd = agentSock.socketFd;
+  pollFds[5].events = POLLIN;
+
+  //listen()
+
+
+  int currentClients = 6;
   bool loop = true;
   while (loop) {
     /* Ping tracker */
@@ -88,7 +100,7 @@ int main(int argc, char **argv) {
             printf("Handling net join!\n");
             struct NET_JOIN_PDU njp;
             memcpy(&njp, buffer, sizeof(struct NET_JOIN_PDU));
-            handleNetJoin(njp, node);
+            handleNetJoin(njp, node, successorSock.socketFd);
             break;
         }
         free(buffer);
@@ -118,16 +130,29 @@ int main(int argc, char **argv) {
  *
  *
  */
-void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node) {
+void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
   printf("JOIN PDU \n");
   printf("type %d\n", njp.type);
   printf("src_address %s\n", njp.src_address);
-  printf("src_port %d\n", njp.src_port);
+  printf("src_port %d\n", ntohs(njp.src_port));
   printf("max_span %d\n", njp.max_span);
   printf("%s %s\n", "max_address", njp.max_address);
   printf("%s %d\n", "max_port", njp.max_port);
 
-  if(node->successor == NULL){
+
+
+  struct NET_JOIN_RESPONSE_PDU njrp;
+  if(node->successor == NULL) {
+    njrp.type = NET_JOIN_RESPONSE;
+    strcpy(njrp.next_address, (char*)node->ip);
+    njrp.PAD = 0;
+    njrp.next_port = node->port;
+    getHashRanges(node, &njrp.range_start, &njrp.range_end);
+
+    struct sockaddr_in sockAdr = getSocketAddress(ntohs(njp.src_port), njp.src_address);
+    connect(socket, (struct sockaddr*)&sockAdr, sizeof(sockAdr));
+
+
     //No other nodes in the network, send response now.
 
   }
@@ -142,18 +167,15 @@ void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node) {
  *
  *
  */
-void getHashRanges(struct node *node) {
+void getHashRanges(struct node *node, uint8_t *minS, uint8_t *maxS) {
 
   float minP = 0;
   float maxP = 0;
 
-  float minS = 0;
-  float maxS = 0;
-
   minP = (float)node->predecessor->hashMin;
-  printf("maxS: %f\n", maxS = (float)node->predecessor->hashMax);
+  *maxS = (uint8_t)node->predecessor->hashMax;
   maxP = floor((maxP - minP) /2 ) + minP;
-  printf("minS: %f\n", minS = maxP + 1);
+  *minS = (uint8_t)maxP + 1;
 
   node->hashMax = (int)maxP;
   node->hashMin = (int)minP;
@@ -300,6 +322,8 @@ uint8_t *receivePDU(int socket) {
  *
  */
 void sendPDU(int socket, struct sockaddr_in address, void *pduSend, int size) {
+  printf("Sending PDU to: %s", inet_ntoa(address.sin_addr));
+  printf(" on port: %d\n", ntohs(address.sin_port));
   int sent = sendto(socket, (uint8_t*)pduSend, size, 0,
          (struct sockaddr*)&address, sizeof(address));
   if(sent < 0){
@@ -392,3 +416,24 @@ struct socketData createSocket(int socketPort, int type) {
 
   return socketData;
 }
+
+
+
+
+// int recv_all(int sockfd, void *buf, size_t len, int flags)
+// {
+//     size_t toread = len;
+//     char  *bufptr = (char*) buf;
+//
+//     while (toread > 0)
+//     {
+//         ssize_t rsz = recv(sockfd, bufptr, toread, flags);
+//         if (rsz <= 0)
+//             return rsz;  /* Error or other end closed cnnection */
+//
+//         toread -= rsz;  /* Read less next time */
+//         bufptr += rsz;  /* Next buffer position to read into */
+//     }
+//
+//     return len;
+// }

@@ -28,6 +28,7 @@ struct node {
   struct node *predecessor;
   struct node *successor;
   struct hash_table *hashTable;
+  int port;
 };
 
 void handleArguments(int argc, char **argv, int *port, char **address);
@@ -40,4 +41,5 @@ struct NET_GET_NODE_RESPONSE_PDU getNodePDU(struct socketData trackerSock, struc
 void sendNetAlive(int trackerSocket, struct socketData agentSock, struct sockaddr_in trackerAddress);
 void joinNetwork(struct NET_GET_NODE_RESPONSE_PDU ngnrp, struct socketData predSock,
                                   uint8_t *ip, struct socketData agentSock);
-void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node);
+void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket);
+void getHashRanges(struct node *node, uint8_t *minS, uint8_t *maxS);
