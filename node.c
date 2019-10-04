@@ -1,24 +1,9 @@
 #include "node.h"
-#include "c_header/pdu.h"
-#include "hashtable/hash.h"
-#include "hashtable/hash_table.h"
+
 
 #define MAXCLIENTS 6
 #define BUFFERSIZE 256
 
-struct socketData {
-  int socketFd;
-  int port;
-};
-
-struct node {
-  int hashMin;
-  int hashMax;
-  uint8_t *ip;
-  struct node *predecessor;
-  struct node *successor;
-  struct hash_table *hashTable;
-};
 
 //https://git.cs.umu.se/courses/5dv197ht19/tree/master/assignment2
 int main(int argc, char **argv) {
@@ -50,7 +35,7 @@ int main(int argc, char **argv) {
   struct NET_GET_NODE_RESPONSE_PDU ngnrp;
   ngnrp = getNodePDU(trackerSock, trackerAddress);
 
-  struct hash_table* hashTable;
+  // struct hash_table* hashTable;
 
   /* Empty response, I.E no node in network */
   if (ntohs(ngnrp.port == 0) && ngnrp.address[0] == 0) {
@@ -78,7 +63,7 @@ int main(int argc, char **argv) {
     sendNetAlive(trackerSock.socketFd, agentSock, trackerAddress);
 
     int ret = poll(pollFds, currentClients, 7000);
-    if(ret <= 0){
+    if(ret <= 0) {
       fprintf(stderr, "Waited 7 seconds. No data received from a client.");
 			fprintf(stderr, " Retrying...\n");
     }
@@ -87,19 +72,24 @@ int main(int argc, char **argv) {
         /*Reading from stdin*/
         char *buffer = calloc(BUFFERSIZE, sizeof(char));
 				int readValue = read(pollFds[i].fd, buffer, BUFFERSIZE-1);
-        if(strcmp("quit\n", buffer) == 0 || readValue <= 0){
+        if(strcmp("quit\n", buffer) == 0 || readValue <= 0) {
           printf("Exiting loop\n");
           free(buffer);
           loop = false;
           break;
         }
         free(buffer);
-      } else if(pollFds[i].revents & POLLIN){
+      } else if(pollFds[i].revents & POLLIN) {
         uint8_t *buffer = calloc(256, sizeof(uint8_t));
 				int readValue = read(pollFds[i].fd, buffer, BUFFERSIZE-1);
         printf("mammagame %d\n", readValue);
-        if(buffer[0] == NET_JOIN){
-          printf("%s\n", buffer);
+        switch(buffer[0]){
+          case NET_JOIN:
+            printf("Handling net join!\n");
+            struct NET_JOIN_PDU njp;
+            memcpy(&njp, buffer, sizeof(struct NET_JOIN_PDU));
+            handleNetJoin(njp, node);
+            break;
         }
         free(buffer);
       }
@@ -111,7 +101,6 @@ int main(int argc, char **argv) {
 
   //listen(trackerSock, 10);
 
-  //TODO: HASHTABLE PÅ NOD - NETJOIN sen
 
 
   shutdown(successorSock.socketFd, SHUT_RDWR);
@@ -122,6 +111,31 @@ int main(int argc, char **argv) {
 
   return 0;
 }
+
+/**
+ *
+ *
+ *
+ *
+ */
+void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node) {
+  printf("JOIN PDU \n");
+  printf("type %d\n", njp.type);
+  printf("src_address %s\n", njp.src_address);
+  printf("src_port %d\n", njp.src_port);
+  printf("max_span %d\n", njp.max_span);
+  printf("%s %s\n", "max_address", njp.max_address);
+  printf("%s %d\n", "max_port", njp.max_port);
+
+  if(node->successor == NULL){
+    //No other nodes in the network, send response now.
+
+  }
+
+
+
+}
+
 /**
  *
  *
@@ -130,16 +144,16 @@ int main(int argc, char **argv) {
  */
 void getHashRanges(struct node *node) {
 
-  float minP;
-  float maxP;
+  float minP = 0;
+  float maxP = 0;
 
-  float minS;
-  float maxS;
+  float minS = 0;
+  float maxS = 0;
 
   minP = (float)node->predecessor->hashMin;
-  maxS = (float)node->predecessor->hashMax;
+  printf("maxS: %f\n", maxS = (float)node->predecessor->hashMax);
   maxP = floor((maxP - minP) /2 ) + minP;
-  minS = maxP + 1;
+  printf("minS: %f\n", minS = maxP + 1);
 
   node->hashMax = (int)maxP;
   node->hashMin = (int)minP;

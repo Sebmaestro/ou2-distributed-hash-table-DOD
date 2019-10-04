@@ -1,6 +1,6 @@
 CC = gcc -std=gnu11
 
-CFLAGS = -g -Wall -lssl -lcrypto -L/usr/lib
+CFLAGS = -g -Wall -lssl -lcrypto -L/usr/lib -lm
 
 all: node
 

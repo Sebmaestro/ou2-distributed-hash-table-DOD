@@ -11,7 +11,24 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <signal.h>
+#include <math.h>
+#include "c_header/pdu.h"
+#include "hashtable/hash.h"
+#include "hashtable/hash_table.h"
 
+struct socketData {
+  int socketFd;
+  int port;
+};
+
+struct node {
+  int hashMin;
+  int hashMax;
+  uint8_t *ip;
+  struct node *predecessor;
+  struct node *successor;
+  struct hash_table *hashTable;
+};
 
 void handleArguments(int argc, char **argv, int *port, char **address);
 struct socketData createSocket(int socketPort, int type);
@@ -23,3 +40,4 @@ struct NET_GET_NODE_RESPONSE_PDU getNodePDU(struct socketData trackerSock, struc
 void sendNetAlive(int trackerSocket, struct socketData agentSock, struct sockaddr_in trackerAddress);
 void joinNetwork(struct NET_GET_NODE_RESPONSE_PDU ngnrp, struct socketData predSock,
                                   uint8_t *ip, struct socketData agentSock);
+void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node);
