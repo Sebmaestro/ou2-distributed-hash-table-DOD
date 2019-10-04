@@ -17,7 +17,7 @@ int main(int argc, char **argv) {
   struct socketData predecessorSock = createSocket(0, SOCK_STREAM);
   struct socketData newNodeSock = createSocket(0, SOCK_STREAM);
   struct socketData trackerSock = createSocket(0, SOCK_DGRAM);
-  struct socketData agentSock = createSocket(0, SOCK_DGRAM);
+  struct socketData agentSock = createSocket(newNodeSock.socketFd, SOCK_DGRAM);
 
   // struct socketData trackerSend;
   // trackerSend.socketFd = trackerSock.socketFd;
@@ -36,7 +36,7 @@ int main(int argc, char **argv) {
   ngnrp = getNodePDU(trackerSock, trackerAddress);
 
   // struct hash_table* hashTable;
-
+  listen(newNodeSock.socketFd, 5);
   /* Empty response, I.E no node in network */
   if (ntohs(ngnrp.port == 0) && ngnrp.address[0] == 0) {
     printf("No other nodes in the network, initializing hashtable.\n");
@@ -47,6 +47,12 @@ int main(int argc, char **argv) {
     /* Net join */
     printf("Net Join inc\n");
     joinNetwork(ngnrp, predecessorSock, node->ip, agentSock);
+    struct sockaddr_in predAddr;
+    socklen_t len = sizeof(predAddr);
+
+    int predecessor = accept(newNodeSock.socketFd, predAddr, len);
+
+    printf("Accepted predecessor on socket: %d\n", predecessor);
      //table_shrink(hashTable, )
 
   }
@@ -65,7 +71,7 @@ int main(int argc, char **argv) {
   pollFds[5].fd = agentSock.socketFd;
   pollFds[5].events = POLLIN;
 
-  //listen()
+  listen(newNodeSock.socketFd, 5);
 
 
   int currentClients = 6;
@@ -94,7 +100,7 @@ int main(int argc, char **argv) {
       } else if(pollFds[i].revents & POLLIN) {
         uint8_t *buffer = calloc(256, sizeof(uint8_t));
 				int readValue = read(pollFds[i].fd, buffer, BUFFERSIZE-1);
-        printf("mammagame %d\n", readValue);
+        printf("Read %d bytes\n", readValue);
         switch(buffer[0]){
           case NET_JOIN:
             printf("Handling net join!\n");
@@ -108,10 +114,6 @@ int main(int argc, char **argv) {
     }
   }
 
-
-
-
-  //listen(trackerSock, 10);
 
 
 
