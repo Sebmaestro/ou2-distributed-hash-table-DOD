@@ -17,7 +17,7 @@ int main(int argc, char **argv) {
   struct socketData predecessorSock = createSocket(0, SOCK_STREAM);
   struct socketData newNodeSock = createSocket(0, SOCK_STREAM);
   struct socketData trackerSock = createSocket(0, SOCK_DGRAM);
-  struct socketData agentSock = createSocket(newNodeSock.socketFd, SOCK_DGRAM);
+  struct socketData agentSock = createSocket(0, SOCK_DGRAM);
 
   // struct socketData trackerSend;
   // trackerSend.socketFd = trackerSock.socketFd;
@@ -50,7 +50,7 @@ int main(int argc, char **argv) {
     struct sockaddr_in predAddr;
     socklen_t len = sizeof(predAddr);
 
-    int predecessor = accept(newNodeSock.socketFd, predAddr, len);
+    int predecessor = accept(newNodeSock.socketFd, (struct sockaddr*)&predAddr, &len);
 
     printf("Accepted predecessor on socket: %d\n", predecessor);
      //table_shrink(hashTable, )
@@ -60,21 +60,25 @@ int main(int argc, char **argv) {
   struct pollfd pollFds[MAXCLIENTS];
   pollFds[0].fd = STDIN_FILENO;
   pollFds[0].events = POLLIN;
-  pollFds[1].fd = successorSock.socketFd;
+  // pollFds[1].fd = successorSock.socketFd;
+  // pollFds[1].events = POLLIN;
+  // pollFds[2].fd = predecessorSock.socketFd;
+  // pollFds[2].events = POLLIN;
+  // pollFds[3].fd = newNodeSock.socketFd;
+  // pollFds[3].events = POLLIN;
+  // pollFds[4].fd = trackerSock.socketFd;
+  // pollFds[4].events = POLLIN;
+  // pollFds[5].fd = agentSock.socketFd;
+  // pollFds[5].events = POLLIN;
+  pollFds[1].fd = agentSock.socketFd;
   pollFds[1].events = POLLIN;
-  pollFds[2].fd = predecessorSock.socketFd;
+  pollFds[2].fd = newNodeSock.socketFd;
   pollFds[2].events = POLLIN;
-  pollFds[3].fd = newNodeSock.socketFd;
-  pollFds[3].events = POLLIN;
-  pollFds[4].fd = trackerSock.socketFd;
-  pollFds[4].events = POLLIN;
-  pollFds[5].fd = agentSock.socketFd;
-  pollFds[5].events = POLLIN;
 
   listen(newNodeSock.socketFd, 5);
 
 
-  int currentClients = 6;
+  int currentClients = 3;
   bool loop = true;
   while (loop) {
     /* Ping tracker */
