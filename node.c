@@ -17,7 +17,7 @@ int main(int argc, char **argv) {
   struct socketData predecessorSock = createSocket(0, SOCK_STREAM);
   struct socketData newNodeSock = createSocket(0, SOCK_STREAM);
   struct socketData trackerSock = createSocket(0, SOCK_DGRAM);
-  struct socketData agentSock = createSocket(0, SOCK_DGRAM);
+  struct socketData agentSock = createSocket(newNodeSock.port, SOCK_DGRAM);
 
   // struct socketData trackerSend;
   // trackerSend.socketFd = trackerSock.socketFd;
@@ -27,6 +27,8 @@ int main(int argc, char **argv) {
   struct sockaddr_in trackerAddress = getSocketAddress(trackerPort, address);
 
   struct node *node = malloc(sizeof(struct node));
+  node->successor = NULL;
+  node->predecessor = NULL;
 
   /* This is the node ip we get when asking the tracker for it :^) */
   node->ip = retrieveNodeIp(trackerSock, trackerAddress);
@@ -156,8 +158,9 @@ void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
     getHashRanges(node, &njrp.range_start, &njrp.range_end);
 
     struct sockaddr_in sockAdr = getSocketAddress(ntohs(njp.src_port), njp.src_address);
-    connect(socket, (struct sockaddr*)&sockAdr, sizeof(sockAdr));
-
+    int con = connect(socket, (struct sockaddr*)&sockAdr, sizeof(sockAdr));
+    printf("con = %d\n", con);
+    perror("Connect");
 
     //No other nodes in the network, send response now.
 
@@ -178,8 +181,8 @@ void getHashRanges(struct node *node, uint8_t *minS, uint8_t *maxS) {
   float minP = 0;
   float maxP = 0;
 
-  minP = (float)node->predecessor->hashMin;
-  *maxS = (uint8_t)node->predecessor->hashMax;
+  minP = (float)node->hashMin;
+  *maxS = (uint8_t)node->hashMax;
   maxP = floor((maxP - minP) /2 ) + minP;
   *minS = (uint8_t)maxP + 1;
 
