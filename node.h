@@ -12,14 +12,12 @@
 #include <errno.h>
 #include <signal.h>
 #include <math.h>
+#include "sockethandler.h"
 #include "c_header/pdu.h"
 #include "hashtable/hash.h"
 #include "hashtable/hash_table.h"
 
-struct socketData {
-  int socketFd;
-  int port;
-};
+
 
 struct node {
   int hashMin;
@@ -32,11 +30,9 @@ struct node {
 };
 
 void handleArguments(int argc, char **argv, int *port, char **address);
-struct socketData createSocket(int socketPort, int type);
 uint8_t *retrieveNodeIp(struct socketData trackerSock, struct sockaddr_in trackerAddress);
 void sendPDU(int socket, struct sockaddr_in address, void *pduSend, int size);
 uint8_t *receivePDU(int socket);
-struct sockaddr_in getSocketAddress(int trackerPort, char *address);
 struct NET_GET_NODE_RESPONSE_PDU getNodePDU(struct socketData trackerSock, struct sockaddr_in trackerAddress);
 void sendNetAlive(int trackerSocket, struct socketData agentSock, struct sockaddr_in trackerAddress);
 void joinNetwork(struct NET_GET_NODE_RESPONSE_PDU ngnrp, struct socketData predSock,
