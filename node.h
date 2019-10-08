@@ -35,8 +35,8 @@ void sendPDU(int socket, struct sockaddr_in address, void *pduSend, int size);
 uint8_t *receivePDU(int socket);
 struct NET_GET_NODE_RESPONSE_PDU getNodePDU(struct socketData trackerSock, struct sockaddr_in trackerAddress);
 void sendNetAlive(int trackerSocket, struct socketData agentSock, struct sockaddr_in trackerAddress);
-void joinNetwork(struct NET_GET_NODE_RESPONSE_PDU ngnrp, struct socketData predSock,
-                                  uint8_t *ip, struct socketData agentSock);
+void sendNetJoin(struct NET_GET_NODE_RESPONSE_PDU ngnrp, uint8_t *ip,
+                 struct socketData agentSock);
 void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket);
 void getHashRanges(struct node *node, uint8_t *minS, uint8_t *maxS);
 struct node* createNode(uint8_t *ipAddress, int port);

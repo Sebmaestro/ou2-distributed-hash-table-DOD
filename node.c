@@ -27,19 +27,21 @@ int main(int argc, char **argv) {
 
   /* This is the address we need to speak with tracker heheh :⁾ */
   struct sockaddr_in trackerAddress = getSocketAddress(trackerPort, address);
- 
+
 
   /* This is the node ip we get when asking the tracker for it :^) */
+  printf("\nSending STUN_LOOKUP to tracker.");
   uint8_t* nodeIp = retrieveNodeIp(trackerSock, trackerAddress);
   int publicPort = newNodeSock.port;
-  
-  
-  
+
+
+
   struct node *node = createNode(nodeIp, publicPort);
   printf("Node IP: %s\n", node->ip);
 
 
   struct NET_GET_NODE_RESPONSE_PDU ngnrp;
+  printf("\nSending NET_GET_NODE to tracker.");
   ngnrp = getNodePDU(trackerSock, trackerAddress);
 
   // struct hash_table* hashTable;
@@ -53,7 +55,7 @@ int main(int argc, char **argv) {
     /* Net join */
     printf("\nNon-empty response from NET_GET_NODE_RESPONSE\n");
 	printf("There are other nodes in the network.\n");
-    joinNetwork(ngnrp, predecessorSock, node->ip, agentSock);
+    sendNetJoin(ngnrp, node->ip, agentSock);
     struct sockaddr_in predAddr;
     socklen_t len = sizeof(predAddr);
 
@@ -94,7 +96,7 @@ int main(int argc, char **argv) {
 
     int ret = poll(pollFds, currentClients, 7000);
     if(ret <= 0) {
-      fprintf(stderr, "Pinging tracker.\n");
+      fprintf(stderr, "\nSending NET_ALIVE to tracker.\n");
     }
     for (size_t i = 0; i < currentClients; i++){
       if (pollFds[i].revents & POLLIN && i == 0) {
@@ -205,15 +207,11 @@ void getHashRanges(struct node *node, uint8_t *minS, uint8_t *maxS) {
  *
  *
  */
-void joinNetwork(struct NET_GET_NODE_RESPONSE_PDU ngnrp, struct socketData predSock,
-                                  uint8_t *ip, struct socketData agentSock) {
-
-
-
+void sendNetJoin(struct NET_GET_NODE_RESPONSE_PDU ngnrp, uint8_t *ip,
+                 struct socketData agentSock) {
   printf("Sending NET_JOIN to: %s, on port: %d\n", ngnrp.address, ntohs(ngnrp.port));
   struct NET_JOIN_PDU njp;
   njp.type = NET_JOIN;
-  //memcpy(njp.src_address, ip, sizeof(njp.src_address));
   strcpy(njp.src_address, (char*)ip);
   njp.PAD = 0;
   njp.src_port = htons(agentSock.port);
@@ -227,10 +225,10 @@ void joinNetwork(struct NET_GET_NODE_RESPONSE_PDU ngnrp, struct socketData predS
 
   struct sockaddr_in nodeAddress = getSocketAddress(ntohs(ngnrp.port), ngnrp.address);
 
+  //Send Join-request over UDP.
   sendPDU(agentSock.socketFd, nodeAddress, &njp, sizeof(struct NET_JOIN_PDU));
-
-
 }
+
 
 /**
  *

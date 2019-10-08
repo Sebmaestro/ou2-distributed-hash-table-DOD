@@ -30,7 +30,7 @@ uint8_t *receivePDU(int socket) {
  *
  */
 void sendPDU(int socket, struct sockaddr_in address, void *pduSend, int size) {
-  printf("\nSending PDU to: %s", inet_ntoa(address.sin_addr));
+  printf("Sending PDU to: %s", inet_ntoa(address.sin_addr));
   printf(" on port: %d\n", ntohs(address.sin_port));
   int sent = sendto(socket, (uint8_t*)pduSend, size, 0,
          (struct sockaddr*)&address, sizeof(address));
