@@ -17,6 +17,10 @@ struct socketData {
   int port;
 };
 
+uint8_t *receivePDU(int socket);
+
+void sendPDU(int socket, struct sockaddr_in address, void *pduSend, int size);
+
 struct socketData createSocket(int socketPort, int type);
 
 struct sockaddr_in getSocketAddress(int trackerPort, char *address);

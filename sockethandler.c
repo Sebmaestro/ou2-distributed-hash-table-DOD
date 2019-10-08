@@ -6,6 +6,46 @@
  *
  *
  */
+uint8_t *receivePDU(int socket) {
+  uint8_t *buffer = calloc(256, sizeof(uint8_t));
+  struct sockaddr_in sender;
+  socklen_t len = sizeof(sender);
+
+
+
+  if (recvfrom(socket, buffer, 256, MSG_WAITALL,
+               (struct sockaddr*)&sender, &len) == -1) {
+    perror("recvfrom");
+  } else {
+    printf("Received message from %s\n", inet_ntoa(sender.sin_addr));
+    return buffer;
+  }
+  return NULL;
+}
+
+/**
+ *
+ *
+ *
+ *
+ */
+void sendPDU(int socket, struct sockaddr_in address, void *pduSend, int size) {
+  printf("\nSending PDU to: %s", inet_ntoa(address.sin_addr));
+  printf(" on port: %d\n", ntohs(address.sin_port));
+  int sent = sendto(socket, (uint8_t*)pduSend, size, 0,
+         (struct sockaddr*)&address, sizeof(address));
+  if(sent < 0){
+           perror("sendto");
+         }
+  printf("Bytes sent(holken i dolken) = %d\n", sent);
+}
+
+/**
+ *
+ *
+ *
+ *
+ */
 struct socketData createSocket(int socketPort, int type) {
 
   struct socketData socketData;
@@ -35,8 +75,6 @@ struct socketData createSocket(int socketPort, int type) {
   else {
     socketData.port = ntohs(inAddr.sin_port);
   }
-
-  printf("porten = %d\n", socketData.port);
 
   return socketData;
 }

@@ -39,3 +39,4 @@ void joinNetwork(struct NET_GET_NODE_RESPONSE_PDU ngnrp, struct socketData predS
                                   uint8_t *ip, struct socketData agentSock);
 void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket);
 void getHashRanges(struct node *node, uint8_t *minS, uint8_t *maxS);
+struct node* createNode(uint8_t *ipAddress, int port);

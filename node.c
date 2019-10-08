@@ -14,25 +14,30 @@ int main(int argc, char **argv) {
 
 
   struct socketData successorSock = createSocket(0, SOCK_STREAM);
+  printf("\nsuccessorSock: %d port: %d\n", successorSock.socketFd, successorSock.port);
   struct socketData predecessorSock = createSocket(0, SOCK_STREAM);
+  printf("predecessorSock: %d port: %d\n", predecessorSock.socketFd, predecessorSock.port);
   struct socketData newNodeSock = createSocket(0, SOCK_STREAM);
+  printf("newNodeSock: %d port: %d\n", newNodeSock.socketFd, newNodeSock.port);
   struct socketData trackerSock = createSocket(0, SOCK_DGRAM);
+  printf("trackerSock: %d port: %d\n", trackerSock.socketFd, trackerSock.port);
   struct socketData agentSock = createSocket(newNodeSock.port, SOCK_DGRAM);
+  printf("agentSock: %d port: %d\n", agentSock.socketFd, agentSock.port);
 
-  // struct socketData trackerSend;
-  // trackerSend.socketFd = trackerSock.socketFd;
-  // trackerSend.port = trackerPort;
 
   /* This is the address we need to speak with tracker heheh :⁾ */
   struct sockaddr_in trackerAddress = getSocketAddress(trackerPort, address);
-
-  struct node *node = malloc(sizeof(struct node));
-  node->successor = NULL;
-  node->predecessor = NULL;
+ 
 
   /* This is the node ip we get when asking the tracker for it :^) */
-  node->ip = retrieveNodeIp(trackerSock, trackerAddress);
+  uint8_t* nodeIp = retrieveNodeIp(trackerSock, trackerAddress);
+  int publicPort = newNodeSock.port;
+  
+  
+  
+  struct node *node = createNode(nodeIp, publicPort);
   printf("Node IP: %s\n", node->ip);
+
 
   struct NET_GET_NODE_RESPONSE_PDU ngnrp;
   ngnrp = getNodePDU(trackerSock, trackerAddress);
@@ -41,13 +46,13 @@ int main(int argc, char **argv) {
   listen(newNodeSock.socketFd, 5);
   /* Empty response, I.E no node in network */
   if (ntohs(ngnrp.port == 0) && ngnrp.address[0] == 0) {
-    printf("No other nodes in the network, initializing hashtable.\n");
-    node->hashTable = table_create(hash_ssn, 256);
+    printf("No other nodes in the network, initializing hashrange.\n");
     node->hashMin = 0;
     node->hashMax = 255;
   } else { /* Non empty response */
     /* Net join */
-    printf("Net Join inc\n");
+    printf("\nNon-empty response from NET_GET_NODE_RESPONSE\n");
+	printf("There are other nodes in the network.\n");
     joinNetwork(ngnrp, predecessorSock, node->ip, agentSock);
     struct sockaddr_in predAddr;
     socklen_t len = sizeof(predAddr);
@@ -89,8 +94,7 @@ int main(int argc, char **argv) {
 
     int ret = poll(pollFds, currentClients, 7000);
     if(ret <= 0) {
-      fprintf(stderr, "Waited 7 seconds. No data received from a client.");
-			fprintf(stderr, " Retrying...\n");
+      fprintf(stderr, "Pinging tracker.\n");
     }
     for (size_t i = 0; i < currentClients; i++){
       if (pollFds[i].revents & POLLIN && i == 0) {
@@ -265,6 +269,7 @@ struct NET_GET_NODE_RESPONSE_PDU getNodePDU(struct socketData trackerSock, struc
 
   if (buff[0] == NET_GET_NODE_RESPONSE) {
     memcpy(&ngnrp, buff, sizeof(struct NET_GET_NODE_RESPONSE_PDU));
+	printf("\nReceived a NET_GET_NODE_RESPONSE\n");
     printf("pdu-type: %d\n", ngnrp.type);
     printf("address: %s\n", ngnrp.address);
     printf("port: %d\n", ntohs(ngnrp.port));
@@ -304,47 +309,6 @@ uint8_t *retrieveNodeIp(struct socketData trackerSock,
   return NULL;
 }
 
-/**
- *
- *
- *
- *
- */
-uint8_t *receivePDU(int socket) {
-  uint8_t *buffer = calloc(256, sizeof(uint8_t));
-  struct sockaddr_in sender;
-  socklen_t len = sizeof(sender);
-
-
-
-  if (recvfrom(socket, buffer, 256, MSG_WAITALL,
-               (struct sockaddr*)&sender, &len) == -1) {
-    perror("recvfrom");
-  } else {
-    printf("Received message from %s\n", inet_ntoa(sender.sin_addr));
-    return buffer;
-  }
-  return NULL;
-}
-
-/**
- *
- *
- *
- *
- */
-void sendPDU(int socket, struct sockaddr_in address, void *pduSend, int size) {
-  printf("Sending PDU to: %s", inet_ntoa(address.sin_addr));
-  printf(" on port: %d\n", ntohs(address.sin_port));
-  int sent = sendto(socket, (uint8_t*)pduSend, size, 0,
-         (struct sockaddr*)&address, sizeof(address));
-  if(sent < 0){
-           perror("sendto");
-         }
-  printf("Bytes sent(holken i dolken) = %d\n", sent);
-}
-
-
 
 /**
  *
@@ -374,7 +338,13 @@ void handleArguments(int argc, char **argv, int *port, char **address) {
 }
 
 
-
+struct node* createNode(uint8_t *ipAddress, int port){
+	struct node *n = calloc(1, sizeof(struct node));
+	n->ip = ipAddress;
+	n->port = port;
+	n->hashTable = table_create(hash_ssn, 256);
+	return n;
+}
 
 
 
