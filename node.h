@@ -22,21 +22,21 @@
 struct node {
   int hashMin;
   int hashMax;
-  uint8_t *ip;
-  struct node *predecessor;
+  char *ip;
   struct node *successor;
+  struct node *predecessor;
   struct hash_table *hashTable;
   int port;
 };
 
 void handleArguments(int argc, char **argv, int *port, char **address);
-uint8_t *retrieveNodeIp(struct socketData trackerSock, struct sockaddr_in trackerAddress);
+char *retrieveNodeIp(struct socketData trackerSock, struct sockaddr_in trackerAddress);
 void sendPDU(int socket, struct sockaddr_in address, void *pduSend, int size);
 uint8_t *receivePDU(int socket);
-struct NET_GET_NODE_RESPONSE_PDU getNodePDU(struct socketData trackerSock, struct sockaddr_in trackerAddress);
+struct NET_GET_NODE_RESPONSE_PDU sendNetGetNode(struct socketData trackerSock, struct sockaddr_in trackerAddress);
 void sendNetAlive(int trackerSocket, struct socketData agentSock, struct sockaddr_in trackerAddress);
-void sendNetJoin(struct NET_GET_NODE_RESPONSE_PDU ngnrp, uint8_t *ip,
+void sendNetJoin(struct NET_GET_NODE_RESPONSE_PDU ngnrp, char *ip,
                  struct socketData agentSock);
 void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket);
 void getHashRanges(struct node *node, uint8_t *minS, uint8_t *maxS);
-struct node* createNode(uint8_t *ipAddress, int port);
+struct node* createNode(char *ipAddress, int port);

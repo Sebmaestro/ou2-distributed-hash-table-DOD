@@ -37,7 +37,7 @@ void sendPDU(int socket, struct sockaddr_in address, void *pduSend, int size) {
   if(sent < 0){
            perror("sendto");
          }
-  printf("Bytes sent(holken i dolken) = %d\n", sent);
+  //printf("Bytes sent(holken i dolken) = %d\n", sent);
 }
 
 /**
@@ -93,4 +93,15 @@ struct sockaddr_in getSocketAddress(int port, char *address) {
   sockAddress.sin_addr.s_addr = inet_addr(address);
 
   return sockAddress;
+}
+
+/**
+ *
+ *
+ *
+ */
+int connectToSocket(int port, char *address, int socket) {
+  struct sockaddr_in sockAdr = getSocketAddress(ntohs(port), address);
+  printf("Trying to connect to %s on port: %d\n", inet_ntoa(sockAdr.sin_addr), htons(sockAdr.sin_port));
+  return connect(socket, (struct sockaddr*)&sockAdr, sizeof(sockAdr));
 }

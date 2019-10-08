@@ -15,8 +15,8 @@ int main(int argc, char **argv) {
 
   struct socketData successorSock = createSocket(0, SOCK_STREAM);
   printf("\nsuccessorSock: %d port: %d\n", successorSock.socketFd, successorSock.port);
-  struct socketData predecessorSock = createSocket(0, SOCK_STREAM);
-  printf("predecessorSock: %d port: %d\n", predecessorSock.socketFd, predecessorSock.port);
+  struct socketData predecessorSock/*= createSocket(0, SOCK_STREAM)*/;
+  // printf("predecessorSock: %d port: %d\n", predecessorSock.socketFd, predecessorSock.port);
   struct socketData newNodeSock = createSocket(0, SOCK_STREAM);
   printf("newNodeSock: %d port: %d\n", newNodeSock.socketFd, newNodeSock.port);
   struct socketData trackerSock = createSocket(0, SOCK_DGRAM);
@@ -30,8 +30,8 @@ int main(int argc, char **argv) {
 
 
   /* This is the node ip we get when asking the tracker for it :^) */
-  printf("\nSending STUN_LOOKUP to tracker.");
-  uint8_t* nodeIp = retrieveNodeIp(trackerSock, trackerAddress);
+  //printf("\nSending STUN_LOOKUP to tracker.");
+  char* nodeIp = retrieveNodeIp(trackerSock, trackerAddress);
   int publicPort = newNodeSock.port;
 
 
@@ -41,32 +41,10 @@ int main(int argc, char **argv) {
 
 
   struct NET_GET_NODE_RESPONSE_PDU ngnrp;
-  printf("\nSending NET_GET_NODE to tracker.");
-  ngnrp = getNodePDU(trackerSock, trackerAddress);
+  //printf("\nSending NET_GET_NODE to tracker.");
+  ngnrp = sendNetGetNode(trackerSock, trackerAddress);
 
-  // struct hash_table* hashTable;
-  listen(newNodeSock.socketFd, 5);
-  /* Empty response, I.E no node in network */
-  if (ntohs(ngnrp.port == 0) && ngnrp.address[0] == 0) {
-    printf("No other nodes in the network, initializing hashrange.\n");
-    node->hashMin = 0;
-    node->hashMax = 255;
-  } else { /* Non empty response */
-    /* Net join */
-    printf("\nNon-empty response from NET_GET_NODE_RESPONSE\n");
-	printf("There are other nodes in the network.\n");
-    sendNetJoin(ngnrp, node->ip, agentSock);
-    struct sockaddr_in predAddr;
-    socklen_t len = sizeof(predAddr);
-
-    int predecessor = accept(newNodeSock.socketFd, (struct sockaddr*)&predAddr, &len);
-
-    printf("Accepted predecessor on socket: %d\n", predecessor);
-    predecessorSock.socketFd = predecessor;
-     //table_shrink(hashTable, )
-
-  }
-
+  int currentClients = 3;
   struct pollfd pollFds[MAXCLIENTS];
   pollFds[0].fd = STDIN_FILENO;
   pollFds[0].events = POLLIN;
@@ -79,28 +57,74 @@ int main(int argc, char **argv) {
   // pollFds[4].fd = trackerSock.socketFd;
   // pollFds[4].events = POLLIN;
   // pollFds[5].fd = agentSock.socketFd;
-  // pollFds[5].events = POLLIN;
+  // pollFds[5].events = POLLIN;//TODO check if max-address == the node's address
   pollFds[1].fd = agentSock.socketFd;
   pollFds[1].events = POLLIN;
   pollFds[2].fd = newNodeSock.socketFd;
   pollFds[2].events = POLLIN;
 
   listen(newNodeSock.socketFd, 5);
+  /* Empty response, I.E no node in network */
+  if (ntohs(ngnrp.port == 0) && ngnrp.address[0] == 0) {
+    printf("No other nodes in the network, initializing hashrange.\n");
+    node->hashMin = 0;
+    node->hashMax = 255;
+  } else { /* Non empty response */
+    /* Net join */
+    printf("\nNon-empty response from NET_GET_NODE_RESPONSE\n");
+	  printf("There are other nodes in the network.\n");
+    sendNetJoin(ngnrp, node->ip, agentSock);
+    struct sockaddr_in predAddr;
+    socklen_t len = sizeof(predAddr);
+
+    int predecessor = accept(newNodeSock.socketFd, (struct sockaddr*)&predAddr, &len);
+
+    printf("Accepted predecessor on socket: %d\n", predecessor);
+    predecessorSock.socketFd = predecessor;
+    uint8_t *buffer = calloc(256, sizeof(uint8_t));
+    if(recv(predecessorSock.socketFd, buffer, BUFFERSIZE-1, 0) == -1) {
+      perror("recv");
+    }
+    struct NET_JOIN_RESPONSE_PDU njrp;
+    memcpy(&njrp, buffer, sizeof(struct NET_JOIN_RESPONSE_PDU));
+    printf("Received NET_JOIN_RESPONSE:\n");
+    printf("next_address: %s\n", njrp.next_address);
+    printf("next_port: %d\n", ntohs(njrp.next_port));
+    printf("%s: %d\n", "range_start", njrp.range_start);
+    printf("%s: %d\n", "range_end", njrp.range_end);
+
+    node->hashMax = njrp.range_end;
+    node->hashMin = njrp.range_start;
+    connectToSocket(njrp.next_port, njrp.next_address, successorSock.socketFd);
+    node->successor = createNode(njrp.next_address, ntohs(njrp.next_port));
+    pollFds[currentClients].fd = predecessorSock.socketFd;
+    pollFds[currentClients].events = POLLIN;
+    currentClients++;
+  }
 
 
-  int currentClients = 3;
+  listen(newNodeSock.socketFd, 5);
+
+
+  int i = 0;
   bool loop = true;
   while (loop) {
+    if(i == 800){
+      break;
+    }
+    i++;
     /* Ping tracker */
+    //printf("\nSending NET_ALIVE to tracker.\n");
     sendNetAlive(trackerSock.socketFd, agentSock, trackerAddress);
 
     int ret = poll(pollFds, currentClients, 7000);
     if(ret <= 0) {
-      fprintf(stderr, "\nSending NET_ALIVE to tracker.\n");
+      //fprintf(stderr, "\nSending NET_ALIVE to tracker.\n");
     }
-    for (size_t i = 0; i < currentClients; i++){
+    for (size_t i = 0; i < currentClients; i++) {
+
+      /* Reading from stdin */
       if (pollFds[i].revents & POLLIN && i == 0) {
-        /*Reading from stdin*/
         char *buffer = calloc(BUFFERSIZE, sizeof(char));
 				int readValue = read(pollFds[i].fd, buffer, BUFFERSIZE-1);
         if(strcmp("quit\n", buffer) == 0 || readValue <= 0) {
@@ -110,18 +134,41 @@ int main(int argc, char **argv) {
           break;
         }
         free(buffer);
+
+      } else if(pollFds[i].revents & POLLIN && i == 2) {
+        printf("dumbas\n");
+        struct sockaddr_in predAddr;
+        socklen_t len = sizeof(predAddr);
+        int predecessor = accept(pollFds[i].fd, (struct sockaddr*)&predAddr, &len);
+
+        printf("Accepted predecessor on socket: %d\n", predecessor);
+
+        predecessorSock.socketFd = predecessor;
+        pollFds[currentClients].fd = predecessorSock.socketFd;
+        pollFds[currentClients].events = POLLIN;
+        currentClients++;
+
+
+
+        /* Reading from pollin */
       } else if(pollFds[i].revents & POLLIN) {
         uint8_t *buffer = calloc(256, sizeof(uint8_t));
 				int readValue = read(pollFds[i].fd, buffer, BUFFERSIZE-1);
-        printf("Read %d bytes\n", readValue);
-        switch(buffer[0]){
+        if(readValue == 0){
+          close(pollFds[i].fd);
+          currentClients--;
+        }
+        printf("Read %d bytes from %d sock %d\n", readValue, i, pollFds[i].fd);
+        switch(buffer[0]) {
           case NET_JOIN:
-            printf("Handling net join!\n");
+
+            printf("Handling net join! from socket: %d index: %d\n", pollFds[i].fd, i);
             struct NET_JOIN_PDU njp;
             memcpy(&njp, buffer, sizeof(struct NET_JOIN_PDU));
             handleNetJoin(njp, node, successorSock.socketFd);
             break;
-        }
+
+          }
         free(buffer);
       }
     }
@@ -139,6 +186,8 @@ int main(int argc, char **argv) {
   return 0;
 }
 
+
+
 /**
  *
  *
@@ -147,33 +196,70 @@ int main(int argc, char **argv) {
  */
 void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
   printf("JOIN PDU \n");
-  printf("type %d\n", njp.type);
-  printf("src_address %s\n", njp.src_address);
-  printf("src_port %d\n", ntohs(njp.src_port));
-  printf("max_span %d\n", njp.max_span);
-  printf("%s %s\n", "max_address", njp.max_address);
-  printf("%s %d\n", "max_port", njp.max_port);
+  // printf("type %d\n", njp.type);
+  // printf("src_address %s\n", njp.src_address);
+  // printf("src_port %d\n", ntohs(njp.src_port));
+  // printf("max_span %d\n", njp.max_span);
+  // printf("%s %s\n", "max_address", njp.max_address);
+  // printf("%s %d\n", "max_port", njp.max_port);
 
 
 
   struct NET_JOIN_RESPONSE_PDU njrp;
+  /* One node in network */
   if(node->successor == NULL) {
     njrp.type = NET_JOIN_RESPONSE;
-    strcpy(njrp.next_address, (char*)node->ip);
+    strcpy(njrp.next_address, node->ip);
     njrp.PAD = 0;
-    njrp.next_port = node->port;
+    njrp.next_port = htons(node->port);
     getHashRanges(node, &njrp.range_start, &njrp.range_end);
 
-    struct sockaddr_in sockAdr = getSocketAddress(ntohs(njp.src_port), njp.src_address);
-    printf("Trying to connect to %s on port: %d\n", inet_ntoa(sockAdr.sin_addr), htons(sockAdr.sin_port));
-    int con = connect(socket, (struct sockaddr*)&sockAdr, sizeof(sockAdr));
-    printf("con = %d\n", con);
-    perror("Connect");
+    /* More than one */
+  } else {
+    //TODO check if max-address == the node's address
+    printf("Kalle jolle\n");
+    printf("Kalle lillebrorsa LMFAO! min: %d max: %d\n", node->hashMin, node->hashMax);
+    /* Check if max span is lower than what we currently have */
+    if (njp.max_span < (node->hashMax - node->hashMin)) {
+      njp.max_span = (node->hashMax - node->hashMin);
+      strcpy(njp.max_address, node->ip);
+      njp.max_port = htons(node->port);
 
-    //No other nodes in the network, send response now.
+      printf("Updating max-span to: %d! Trying to send to socket %d\n", njp.max_span, socket);
+      send(socket, &njp, sizeof(struct NET_JOIN_PDU), 0);
 
-    // TODOOOOOOOOOOOOOOOOOOOOOOOOOOOO SEND PDU TILL NYA NODEN
+      return;
+    }
+
+    if (strcmp(njp.max_address, node->ip) == 0 && ntohs(njp.max_port) == node->port) {
+      printf("LOL KALLE WEED!\n");
+      getHashRanges(node, &njrp.range_start, &njrp.range_end);
+
+      njrp.type = NET_JOIN_RESPONSE;
+      strcpy(njrp.next_address, node->successor->ip);
+      njrp.PAD = 0;
+      njrp.next_port = htons(node->successor->port);
+      close(socket);
+
+      //TODO!!! IS THIS OK?!?!?! DO WE NEED TO UPDATE successorSock?!?!?
+      struct socketData suc = createSocket(0, SOCK_STREAM);
+      socket = suc.socketFd;
+    } else {
+      send(socket, &njp, sizeof(struct NET_JOIN_PDU), 0);
+      printf("Did not update max-span. Trying to send to socket %d\n", socket);
+      return;
+    }
   }
+  int connection = connectToSocket(njp.src_port, njp.src_address, socket);
+  node->successor = createNode(njp.src_address, ntohs(njp.src_port));
+  if(connection == 0) {
+    printf("Connected successfully.\n");
+    printf("Sending response to socket %d\n", socket);
+    send(socket, &njrp, sizeof(struct NET_JOIN_RESPONSE_PDU), 0);
+  } else {
+    perror("connect");
+  }
+
 
 
 
@@ -183,14 +269,13 @@ void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
  *
  *
  *
- *
+ *48585
  */
 void getHashRanges(struct node *node, uint8_t *minS, uint8_t *maxS) {
 
-  float minP = 0;
-  float maxP = 0;
+  float minP = (float)node->hashMin;
+  float maxP = (float)node->hashMax;
 
-  minP = (float)node->hashMin;
   *maxS = (uint8_t)node->hashMax;
   maxP = floor((maxP - minP) /2 ) + minP;
   *minS = (uint8_t)maxP + 1;
@@ -207,7 +292,7 @@ void getHashRanges(struct node *node, uint8_t *minS, uint8_t *maxS) {
  *
  *
  */
-void sendNetJoin(struct NET_GET_NODE_RESPONSE_PDU ngnrp, uint8_t *ip,
+void sendNetJoin(struct NET_GET_NODE_RESPONSE_PDU ngnrp, char *ip,
                  struct socketData agentSock) {
   printf("Sending NET_JOIN to: %s, on port: %d\n", ngnrp.address, ntohs(ngnrp.port));
   struct NET_JOIN_PDU njp;
@@ -252,7 +337,7 @@ void sendNetAlive(int trackerSocket, struct socketData agentSock, struct sockadd
  *
  *
  */
-struct NET_GET_NODE_RESPONSE_PDU getNodePDU(struct socketData trackerSock, struct sockaddr_in trackerAddress) {
+struct NET_GET_NODE_RESPONSE_PDU sendNetGetNode(struct socketData trackerSock, struct sockaddr_in trackerAddress) {
 
   struct NET_GET_NODE_PDU ngnp;
   ngnp.type = NET_GET_NODE;
@@ -267,7 +352,7 @@ struct NET_GET_NODE_RESPONSE_PDU getNodePDU(struct socketData trackerSock, struc
 
   if (buff[0] == NET_GET_NODE_RESPONSE) {
     memcpy(&ngnrp, buff, sizeof(struct NET_GET_NODE_RESPONSE_PDU));
-	printf("\nReceived a NET_GET_NODE_RESPONSE\n");
+	  //printf("\nReceived a NET_GET_NODE_RESPONSE\n");
     printf("pdu-type: %d\n", ngnrp.type);
     printf("address: %s\n", ngnrp.address);
     printf("port: %d\n", ntohs(ngnrp.port));
@@ -283,7 +368,7 @@ struct NET_GET_NODE_RESPONSE_PDU getNodePDU(struct socketData trackerSock, struc
 /**
  * Retrieves ip for node with STUN request and stores it in the ip-pointer.
  */
-uint8_t *retrieveNodeIp(struct socketData trackerSock,
+char *retrieveNodeIp(struct socketData trackerSock,
                         struct sockaddr_in trackerAddress) {
   struct STUN_LOOKUP_PDU slp;
   slp.type = STUN_LOOKUP;
@@ -299,7 +384,7 @@ uint8_t *retrieveNodeIp(struct socketData trackerSock,
       memcpy(&srp, buff, sizeof(struct STUN_RESPONSE_PDU));
       uint8_t *addr = calloc(ADDRESS_LENGTH, sizeof(uint8_t));
       memcpy(addr, srp.address, sizeof(srp.address));
-      return addr;
+      return (char*)addr;
 
   }
 
@@ -336,7 +421,7 @@ void handleArguments(int argc, char **argv, int *port, char **address) {
 }
 
 
-struct node* createNode(uint8_t *ipAddress, int port){
+struct node* createNode(char *ipAddress, int port) {
 	struct node *n = calloc(1, sizeof(struct node));
 	n->ip = ipAddress;
 	n->port = port;
