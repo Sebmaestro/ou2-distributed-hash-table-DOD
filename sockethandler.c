@@ -30,8 +30,8 @@ uint8_t *receivePDU(int socket) {
  *
  */
 void sendPDU(int socket, struct sockaddr_in address, void *pduSend, int size) {
-  printf("Sending PDU to: %s", inet_ntoa(address.sin_addr));
-  printf(" on port: %d\n", ntohs(address.sin_port));
+  // printf("Sending PDU to: %s", inet_ntoa(address.sin_addr));
+  // printf(" on port: %d\n", ntohs(address.sin_port));
   int sent = sendto(socket, (uint8_t*)pduSend, size, 0,
          (struct sockaddr*)&address, sizeof(address));
   if(sent < 0){
@@ -51,6 +51,10 @@ struct socketData createSocket(int socketPort, int type) {
   struct socketData socketData;
   struct sockaddr_in inAddr;
   socketData.socketFd = socket(AF_INET, type, 0);
+
+  int enable = 1;
+  setsockopt(socketData.socketFd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int));
+  setsockopt(socketData.socketFd, SOL_SOCKET, SO_REUSEPORT, &enable, sizeof(int));
 
   if(socketData.socketFd < 0) {
       perror("Failed to create incoming socket");

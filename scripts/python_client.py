@@ -2,17 +2,40 @@ import socket
 import sys
 import struct
 
-if __name__ == '__main__':
-    if len(sys.argv) != 3:
-        print('Wrong number of arguments')
-        print('Correct usage:{} node-address node-port'.format(sys.argv[0]))
-        exit()
+def send_stun():
+    sock = socket.socket(type=socket.SOCK_DGRAM)
+    sock.connect((sys.argv[3], int(sys.argv[4])))
+    print(sys.argv[4])
 
+    asock = socket.socket(type=socket.SOCK_DGRAM)
+    asock.bind(('', 0))
+
+    msg = b'\xc8\x00' + struct.pack('>H', asock.getsockname()[1])
+    print(asock.getsockname())
+    response = bytearray(18)
+
+    
+    sock.sendall(msg)
+    print('Sent stun request')
+    asock.recv_into(response, 16)
+    
+    return response[1:].decode('ascii')
+
+
+if __name__ == '__main__':
+    if len(sys.argv) != 5:
+        print('Wrong number of arguments')
+        print('Correct usage:{} node-address node-port tracker-ip tracker-port'.format(sys.argv[0]))
+        exit()
+        
+    addr = send_stun()
+    print('My address is: ' + addr)
+    
     sock = socket.socket(type=socket.SOCK_DGRAM)
     sock.connect((sys.argv[1], int(sys.argv[2])))
     print("Created UDP socket to {}:{}".format(sys.argv[1], sys.argv[2]))
     listening_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    listening_socket.bind(('127.0.0.1', 0))
+    listening_socket.bind(('0.0.0.0', 0))
     listen_port = listening_socket.getsockname()[1]
     print('\nListening for response messages on port {}'.format(listen_port))
 
@@ -48,7 +71,7 @@ if __name__ == '__main__':
 
             msg = b'\x66' + struct.pack('!13s16sH',
                                         str.encode(ssn, 'ascii'),
-                                        str.encode('127.0.0.1', 'ascii'),
+                                        str.encode(addr, 'ascii'),
                                         listen_port)
             print(msg)
             sock.sendall(msg)

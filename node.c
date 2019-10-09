@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
   //printf("\nSending NET_GET_NODE to tracker.");
   ngnrp = sendNetGetNode(trackerSock, trackerAddress);
 
-  int currentClients = 3;
+  int currentConnections = 3;
   struct pollfd pollFds[MAXCLIENTS];
   pollFds[0].fd = STDIN_FILENO;
   pollFds[0].events = POLLIN;
@@ -57,7 +57,7 @@ int main(int argc, char **argv) {
   // pollFds[4].fd = trackerSock.socketFd;
   // pollFds[4].events = POLLIN;
   // pollFds[5].fd = agentSock.socketFd;
-  // pollFds[5].events = POLLIN;//TODO check if max-address == the node's address
+  // pollFds[5].events = POLLIN;
   pollFds[1].fd = agentSock.socketFd;
   pollFds[1].events = POLLIN;
   pollFds[2].fd = newNodeSock.socketFd;
@@ -97,31 +97,28 @@ int main(int argc, char **argv) {
     node->hashMin = njrp.range_start;
     connectToSocket(njrp.next_port, njrp.next_address, successorSock.socketFd);
     node->successor = createNode(njrp.next_address, ntohs(njrp.next_port));
-    pollFds[currentClients].fd = predecessorSock.socketFd;
-    pollFds[currentClients].events = POLLIN;
-    currentClients++;
+    pollFds[currentConnections].fd = predecessorSock.socketFd;
+    pollFds[currentConnections].events = POLLIN;
+    currentConnections++;
   }
 
 
   listen(newNodeSock.socketFd, 5);
 
 
-  int i = 0;
   bool loop = true;
   while (loop) {
-    if(i == 800){
-      break;
-    }
-    i++;
     /* Ping tracker */
-    //printf("\nSending NET_ALIVE to tracker.\n");
+    // printf("\nMy hash-ranges: min: %d max: %d.\n", node->hashMin, node->hashMax);
     sendNetAlive(trackerSock.socketFd, agentSock, trackerAddress);
 
-    int ret = poll(pollFds, currentClients, 7000);
+    // printf("god aft1\n");
+    int ret = poll(pollFds, currentConnections, 7000);
+    // printf("god aft2\n");
     if(ret <= 0) {
       //fprintf(stderr, "\nSending NET_ALIVE to tracker.\n");
     }
-    for (size_t i = 0; i < currentClients; i++) {
+    for (size_t i = 0; i < currentConnections; i++) {
 
       /* Reading from stdin */
       if (pollFds[i].revents & POLLIN && i == 0) {
@@ -132,6 +129,12 @@ int main(int argc, char **argv) {
           free(buffer);
           loop = false;
           break;
+        } else if (strncmp("insert\n", buffer, 6) == 0) {
+
+          sendInsert(buffer, successorSock.socketFd);
+
+
+
         }
         free(buffer);
 
@@ -141,34 +144,80 @@ int main(int argc, char **argv) {
         socklen_t len = sizeof(predAddr);
         int predecessor = accept(pollFds[i].fd, (struct sockaddr*)&predAddr, &len);
 
-        printf("Accepted predecessor on socket: %d\n", predecessor);
-
+        printf("\x1B[36mAccepted predecessor on socket: %d\n", predecessor);
+        printf("\x1B[0mAccepting on index: %d\n", currentConnections);
         predecessorSock.socketFd = predecessor;
-        pollFds[currentClients].fd = predecessorSock.socketFd;
-        pollFds[currentClients].events = POLLIN;
-        currentClients++;
-
+        pollFds[currentConnections].fd = predecessorSock.socketFd;
+        pollFds[currentConnections].events = POLLIN;
+        currentConnections++;
+        // printf("dumvas2\n");
+        break;
 
 
         /* Reading from pollin */
       } else if(pollFds[i].revents & POLLIN) {
         uint8_t *buffer = calloc(256, sizeof(uint8_t));
 				int readValue = read(pollFds[i].fd, buffer, BUFFERSIZE-1);
-        if(readValue == 0){
-          close(pollFds[i].fd);
-          currentClients--;
-        }
-        printf("Read %d bytes from %d sock %d\n", readValue, i, pollFds[i].fd);
-        switch(buffer[0]) {
-          case NET_JOIN:
+        printf("Read %d bytes from %ld sock %d\n", readValue, i, pollFds[i].fd);
 
-            printf("Handling net join! from socket: %d index: %d\n", pollFds[i].fd, i);
+        /*Connection dropped, close socket.*/
+        if(readValue <= 0){
+          printf("skratt\n");
+          loop = false;
+          break;
+        }
+        switch(buffer[0]) {
+          case NET_JOIN: {
+            // printf("galle\n");
             struct NET_JOIN_PDU njp;
             memcpy(&njp, buffer, sizeof(struct NET_JOIN_PDU));
             handleNetJoin(njp, node, successorSock.socketFd);
             break;
-
           }
+          case NET_CLOSE_CONNECTION: {
+            close(pollFds[i].fd);
+            currentConnections--;
+            i--;
+            continue;
+          }
+          case VAL_INSERT: {
+            struct VAL_INSERT_PDU vip;
+
+            /*Size to copy*/
+            uint8_t size = sizeof(vip.type) + sizeof(vip.ssn) +
+                           sizeof(vip.name_length) + sizeof(vip.PAD);
+            /*Number of bytes read from buffer*/
+            uint8_t readBytes = 0;
+
+            /*Read type, ssn, name_length, PAD*/
+            memcpy(&vip, buffer, size);
+
+            /*Update readBytes and next size to read*/
+            readBytes = size;
+            size = vip.name_length;
+
+            /*Read name*/
+            memcpy(vip.name, buffer+readBytes, size);
+
+            readBytes = readBytes+vip.name_length;
+            size = sizeof(vip.email_length);
+
+            /*Read email_length*/
+            memcpy(&vip.email_length, buffer+readBytes, 1);
+
+            readBytes = readBytes + sizeof(vip.email_length) + sizeof(vip.PAD2);
+            size = vip.email_length;
+
+            /*Read email*/
+            memcpy(vip.email, buffer+readBytes, vip.email_length);
+
+
+            printf("SSN: %s\n", vip.ssn);
+            printf("Name: %s\n", (char*)vip.name);
+            printf("Email: %s\n", (char*)vip.email);
+          }
+        }
+
         free(buffer);
       }
     }
@@ -185,6 +234,58 @@ int main(int argc, char **argv) {
 
   return 0;
 }
+
+
+/**
+ *
+ *
+ *
+ *
+ */
+ void sendInsert(char *buffer, int socket) {
+   // char *newStr = buffer+7;
+   // printf("%s\n", newStr);
+   //
+   //
+   // char *ssn;
+   // printf("%s\n", ssn = strsep(&newStr, ","));
+   //
+   // char *name;
+   // name = strsep(&newStr, ",");
+   // name++;
+   // printf("%s\n", name);
+   //
+   // char *email;
+   // email = strsep(&newStr, ",");
+   // email++;
+   // printf("%s\n", email);
+   //
+   //
+   // struct VAL_INSERT_PDU vip;
+   // printf("Sizeof %d\n", sizeof(vip));
+   // vip.type = VAL_INSERT;
+   // memset(&vip.PAD2, 0, sizeof(vip.PAD2));
+   //
+   // strcpy((char*)vip.ssn, ssn);
+   //
+   // vip.PAD = 0;
+   //
+   // vip.name_length = strlen(name);
+   // vip.name = malloc(vip.name_length+1*sizeof(char));
+   // strcpy((char*)vip.name, name);
+   // printf("%s\n", vip.name);
+   //
+   //
+   // vip.email_length = strlen(email);
+   // vip.email = malloc(vip.email_length+1*sizeof(char));
+   // strcpy((char*)vip.email, email);
+   // printf("%s\n", vip.email);
+   //
+   // printf("Sizeof %d\n", sizeof(vip));
+   // send(socket, &vip, sizeof(vip)+sizeof(vip.name)+sizeof(vip.email), 0);
+ }
+
+
 
 
 
@@ -216,9 +317,6 @@ void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
 
     /* More than one */
   } else {
-    //TODO check if max-address == the node's address
-    printf("Kalle jolle\n");
-    printf("Kalle lillebrorsa LMFAO! min: %d max: %d\n", node->hashMin, node->hashMax);
     /* Check if max span is lower than what we currently have */
     if (njp.max_span < (node->hashMax - node->hashMin)) {
       njp.max_span = (node->hashMax - node->hashMin);
@@ -231,20 +329,25 @@ void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
       return;
     }
 
+    /* Q13 */
     if (strcmp(njp.max_address, node->ip) == 0 && ntohs(njp.max_port) == node->port) {
-      printf("LOL KALLE WEED!\n");
       getHashRanges(node, &njrp.range_start, &njrp.range_end);
 
       njrp.type = NET_JOIN_RESPONSE;
       strcpy(njrp.next_address, node->successor->ip);
       njrp.PAD = 0;
       njrp.next_port = htons(node->successor->port);
+
+      struct NET_CLOSE_CONNECTION_PDU nccp;
+      nccp.type = NET_CLOSE_CONNECTION;
+      send(socket, &nccp, sizeof(struct NET_CLOSE_CONNECTION_PDU), 0);
       close(socket);
 
       //TODO!!! IS THIS OK?!?!?! DO WE NEED TO UPDATE successorSock?!?!?
       struct socketData suc = createSocket(0, SOCK_STREAM);
       socket = suc.socketFd;
     } else {
+      /* Q14 */
       send(socket, &njp, sizeof(struct NET_JOIN_PDU), 0);
       printf("Did not update max-span. Trying to send to socket %d\n", socket);
       return;

@@ -40,3 +40,4 @@ void sendNetJoin(struct NET_GET_NODE_RESPONSE_PDU ngnrp, char *ip,
 void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket);
 void getHashRanges(struct node *node, uint8_t *minS, uint8_t *maxS);
 struct node* createNode(char *ipAddress, int port);
+void sendInsert(char *buffer, int socket);
