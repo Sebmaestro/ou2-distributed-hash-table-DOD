@@ -6,7 +6,7 @@
  * documented in the header file 'hash_table.h'.
  *
  * klasa@cs.umu.se
- * jakub@cs.umu.se
+ * kuba@cs.umu.se
  */
 
 struct hash_table* table_create(hash_function* hash_func, uint32_t max_size) {
@@ -102,24 +102,26 @@ void table_free(struct hash_table* table) {
     free(table);
 }
 
-void table_shrink(struct hash_table* table, uint32_t new_table_size) {
-    for(int i = new_table_size; i < table->max_entries; i++) {
-        struct table_entry* entry = table->entries[i], *next; 
-        while(entry) {
-            next = entry->next; 
-            entry_free(entry);
-            entry = next;
+struct table_entry* get_entry_iterator(struct hash_table* table) {
+    static int i = 0;
+    static struct table_entry* e = NULL;
+    
+    for(; i < table->max_entries; i++) {
+        if(e == NULL) {
+            e = table->entries[i];
+        } 
+        while(e) {
+            struct table_entry* ret = e;
+            e = e->next;
+            if(e == NULL) {
+                i++;
+            }
+            return ret;
         }
     }
 
-    table->entries = realloc(table->entries, sizeof(struct table_entry*) * new_table_size);
-    table->max_entries = new_table_size;
-}
-
-void table_grow(struct hash_table* table, uint32_t new_table_size) {
-    table->entries = realloc(table->entries, sizeof(struct table_entry*) * new_table_size);
-    memset(table->entries + table->max_entries, 0, sizeof(struct table_entry*) * (new_table_size - table->max_entries));
-    table->max_entries = new_table_size;
+    i = 0;
+    return NULL;
 }
 
 void entry_free(struct table_entry* e) {

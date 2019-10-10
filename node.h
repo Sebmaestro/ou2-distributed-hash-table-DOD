@@ -41,3 +41,8 @@ void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket);
 void getHashRanges(struct node *node, uint8_t *minS, uint8_t *maxS);
 struct node* createNode(char *ipAddress, int port);
 void sendInsert(char *buffer, int socket);
+struct VAL_INSERT_PDU extractPDU(uint8_t *buffer, int *bufferSize);
+void handleValInsert(struct VAL_INSERT_PDU vip, struct node *node, int socket, int size, uint8_t *buffer);
+bool isInRange(struct node *node, char *ssn);
+void removeValue(struct VAL_REMOVE_PDU vrp, struct node *node, int socket);
+void lookupValue(struct VAL_LOOKUP_PDU vlp, struct node *node, int socket, int agentSocket);

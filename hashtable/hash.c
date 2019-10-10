@@ -20,6 +20,6 @@ hash_t sha1_digest_to_uint8(char* digest) {
 
 hash_t hash_ssn(char* ssn) {
     char digest[20];
-    evp(ssn, (unsigned char*)digest, 12);
+    evp(ssn, (unsigned char*)digest, 13);
     return sha1_digest_to_uint8(digest);
 }

@@ -7,7 +7,7 @@
  * are free within the scope of the course.
  *
  * klasa@cs.umu.se
- * jakub@cs.umu.se
+ * kuba@cs.umu.se
  */
 
 typedef uint8_t hash_t;
@@ -58,15 +58,10 @@ struct table_entry* table_lookup(struct hash_table* table, char* ssn);
 void table_free(struct hash_table* table);
 
 /**
- * Shrinks the given table to a new max size, entries outside the new
- * range are freed.
+ * Iterates the elements of the table.
+ * Note, not thread safe.
  */
-void table_shrink(struct hash_table* table, uint32_t new_table_size);
-
-/**
- * Grows the given table to a new max size. The new_table_size must be larger than the current table size.
- */
-void table_grow(struct hash_table* table, uint32_t new_table_size);
+struct table_entry* get_entry_iterator(struct hash_table* table);
 
 /**
  * Frees a table entry.

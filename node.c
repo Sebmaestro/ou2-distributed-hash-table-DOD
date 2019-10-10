@@ -1,3 +1,5 @@
+/* TODOOOOOOOOOOOO HALLÅ KOLLA HÄR. SÄTT IN SUCCESSORSOCK FÖR VARJE NOD I STRUCEN PAJAS */
+
 #include "node.h"
 
 
@@ -109,7 +111,7 @@ int main(int argc, char **argv) {
   bool loop = true;
   while (loop) {
     /* Ping tracker */
-    // printf("\nMy hash-ranges: min: %d max: %d.\n", node->hashMin, node->hashMax);
+    printf("\nMy hash-ranges: min: %d max: %d.\n", node->hashMin, node->hashMax);
     sendNetAlive(trackerSock.socketFd, agentSock, trackerAddress);
 
     // printf("god aft1\n");
@@ -181,40 +183,22 @@ int main(int argc, char **argv) {
             continue;
           }
           case VAL_INSERT: {
-            struct VAL_INSERT_PDU vip;
-
-            /*Size to copy*/
-            uint8_t size = sizeof(vip.type) + sizeof(vip.ssn) +
-                           sizeof(vip.name_length) + sizeof(vip.PAD);
-            /*Number of bytes read from buffer*/
-            uint8_t readBytes = 0;
-
-            /*Read type, ssn, name_length, PAD*/
-            memcpy(&vip, buffer, size);
-
-            /*Update readBytes and next size to read*/
-            readBytes = size;
-            size = vip.name_length;
-
-            /*Read name*/
-            memcpy(vip.name, buffer+readBytes, size);
-
-            readBytes = readBytes+vip.name_length;
-            size = sizeof(vip.email_length);
-
-            /*Read email_length*/
-            memcpy(&vip.email_length, buffer+readBytes, 1);
-
-            readBytes = readBytes + sizeof(vip.email_length) + sizeof(vip.PAD2);
-            size = vip.email_length;
-
-            /*Read email*/
-            memcpy(vip.email, buffer+readBytes, vip.email_length);
-
-
-            printf("SSN: %s\n", vip.ssn);
-            printf("Name: %s\n", (char*)vip.name);
-            printf("Email: %s\n", (char*)vip.email);
+            int bufferSize = 0;
+            struct VAL_INSERT_PDU vip = extractPDU(buffer, &bufferSize);
+            handleValInsert(vip, node, successorSock.socketFd, bufferSize, buffer);
+            break;
+          }
+          case VAL_REMOVE: {
+            struct VAL_REMOVE_PDU vrp;
+            memcpy(&vrp, buffer, sizeof(vrp));
+            removeValue(vrp, node, successorSock.socketFd);
+            break;
+          }
+          case VAL_LOOKUP: {
+            struct VAL_LOOKUP_PDU vlp;
+            memcpy(&vlp, buffer, sizeof(vlp));
+            lookupValue(vlp, node, successorSock.socketFd, agentSock.socketFd);
+            break;
           }
         }
 
@@ -233,6 +217,180 @@ int main(int argc, char **argv) {
   shutdown(agentSock.socketFd, SHUT_RDWR);
 
   return 0;
+}
+
+/**
+ *
+ *
+ *
+ */
+void lookupValue(struct VAL_LOOKUP_PDU vlp, struct node *node, int socket, int agentSocket) {
+
+
+  if (isInRange(node, vlp.ssn)) {
+    printf("Här finns jag\n");
+    /* Send val lookup response */
+
+    struct VAL_LOOKUP_RESPONSE_PDU vlrp;
+    struct table_entry *tableEntry;
+    vlrp.type = VAL_LOOKUP_RESPONSE;
+    tableEntry = table_lookup(node->hashTable, vlp.ssn);
+
+    int size = 0;
+    /* If entry does not exist */
+    if (tableEntry == NULL) {
+      printf("Finns ej lagrat\n");
+      vlrp.name_length = 0;
+      vlrp.name = NULL;
+      vlrp.email_length = 0;
+      vlrp.email = NULL;
+    } else { /* If entry do exist */
+      printf("Finns lagrat:\n");
+      strcpy((char*)vlrp.ssn, tableEntry->ssn);
+      vlrp.name_length = strlen(tableEntry->name) + 1;
+      vlrp.name = malloc(vlrp.name_length * sizeof(char));
+      strcpy((char*)vlrp.name, tableEntry->name);
+      vlrp.email_length = strlen(tableEntry->email) + 1;
+      vlrp.email = malloc(vlrp.email_length * sizeof(char));
+      strcpy((char*)vlrp.email, tableEntry->email);
+      printf("ssn = %s\n", vlrp.ssn);
+      printf("name = %s\n", vlrp.name);
+      printf("email = %s\n", vlrp.email);
+
+
+
+    }
+    vlrp.PAD = 0; /* Eventuell bug */
+    memset(&vlrp.PAD2, 0, sizeof(vlrp.PAD2));
+
+    size = sizeof(vlrp) - 16 + vlrp.name_length + vlrp.email_length;
+
+    uint8_t *buffer = calloc(size, sizeof(uint8_t));
+
+    int copiedBytes = 0;
+
+    memcpy(buffer, &vlrp, 16);
+    copiedBytes = 16;
+
+    memcpy(buffer + copiedBytes, vlrp.name, vlrp.name_length);
+    copiedBytes = copiedBytes + vlrp.name_length;
+    memcpy(buffer + copiedBytes, &vlrp.email_length, 1);
+    copiedBytes++;
+    memcpy(buffer + copiedBytes, vlrp.PAD2, sizeof(vlrp.PAD2));
+    copiedBytes = copiedBytes + sizeof(vlrp.PAD2);
+    memcpy(buffer + copiedBytes, vlrp.email, vlrp.email_length);
+
+    struct sockaddr_in address = getSocketAddress(htons(vlp.sender_port), vlp.sender_address);
+    sendPDU(agentSocket, address, buffer, size);
+
+  } else {
+    printf("Jag fanns inte här\n");
+
+    send(socket, &vlp, sizeof(vlp), 0);
+  }
+}
+
+/*
+ *
+ *
+ *
+ *
+ */
+void removeValue(struct VAL_REMOVE_PDU vrp, struct node *node, int socket) {
+  if (isInRange(node, (char*)vrp.ssn)) {
+    table_remove(node->hashTable, (char*)vrp.ssn);
+    printf("Removed value!\n");
+  } else {
+    send(socket, &vrp, sizeof(vrp), 0);
+  }
+}
+
+/*
+ *
+ *
+ *
+ */
+ bool isInRange(struct node *node, char *ssn) {
+   hash_t hashIndex = node->hashTable->hash_func(ssn) % node->hashTable->max_entries;
+   printf("Hash index is: %d. Search and destroy for node with same hash index\n", hashIndex);
+   /* In index, node will receive value */
+   if (node->hashMin <= hashIndex && hashIndex <= node->hashMax) {
+     return true;
+   }
+   return false;
+ }
+
+/*
+ *
+ *
+ *
+ */
+void handleValInsert(struct VAL_INSERT_PDU vip, struct node *node, int socket, int size, uint8_t *buffer) {
+
+
+
+  if (isInRange(node, (char*)vip.ssn)) {
+    table_insert(node->hashTable, (char*)vip.ssn, (char*)vip.name, (char*)vip.email);
+    printf("Inserted value into table\n");
+  } else {
+    printf("Sending values to next node\n");
+    send(socket, buffer, size, 0);
+  }
+
+}
+
+/*
+ *
+ *
+ *
+ */
+struct VAL_INSERT_PDU extractPDU(uint8_t *buffer, int *bufferSize) {
+  struct VAL_INSERT_PDU vip;
+
+  /*Size to copy*/
+  uint8_t size = sizeof(vip.type) + sizeof(vip.ssn) +
+                 sizeof(vip.name_length) + sizeof(vip.PAD);
+  /*Number of bytes read from buffer*/
+  uint8_t readBytes = 0;
+
+  /*Read type, ssn, name_length, PAD*/
+  memcpy(&vip, buffer, size);
+
+  /*Update readBytes and next size to read*/
+  readBytes = size;
+  size = vip.name_length;
+
+  /*Read name*/
+  vip.name = calloc(vip.name_length, sizeof(uint8_t));
+  memcpy(vip.name, buffer+readBytes, size);
+  readBytes = readBytes+vip.name_length;
+  size = sizeof(vip.email_length);
+
+  /*Read email_length*/
+  memcpy(&vip.email_length, buffer+readBytes, size);
+
+  readBytes = readBytes + sizeof(vip.email_length);
+  size = sizeof(vip.PAD2);
+
+  memcpy(&vip.PAD2, buffer+readBytes, size);
+
+  readBytes = readBytes + sizeof(vip.PAD2);
+  size = vip.email_length;
+  vip.email = calloc(vip.email_length, sizeof(uint8_t));
+  /*Read email*/
+  memcpy(vip.email, buffer+readBytes, vip.email_length);
+
+  readBytes = readBytes + vip.email_length;
+  *bufferSize = readBytes;
+
+  printf("SSN: %s\n", vip.ssn);
+  printf("Name: %s\n", (char*)vip.name);
+  printf("Email: %s\n", (char*)vip.email);
+
+  printf("%d\n", *bufferSize);
+  printf("%ld\n", sizeof(vip));
+
+  return vip;
 }
 
 
