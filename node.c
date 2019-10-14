@@ -105,9 +105,7 @@ int main(int argc, char **argv) {
     printf("\nMy hash-ranges: min: %d max: %d.\n", node->hashMin, node->hashMax);
     sendNetAlive(trackerSock.socketFd, agentSock, trackerAddress);
 
-    // printf("god aft1\n");
     int ret = poll(pollFds, currentConnections, 7000);
-    // printf("god aft2\n");
     if(ret <= 0) {
       //fprintf(stderr, "\nSending NET_ALIVE to tracker.\n");
     }
@@ -118,7 +116,17 @@ int main(int argc, char **argv) {
         char *buffer = calloc(BUFFERSIZE, sizeof(char));
 				int readValue = read(pollFds[i].fd, buffer, BUFFERSIZE-1);
         if(strcmp("quit\n", buffer) == 0 || readValue <= 0) {
-          printf("Exiting loop\n");
+
+
+          /* Node is leaving the network. */
+
+          /* 1. Send NET_NEW_RANGE
+           * 2. Transfer all table_entries
+           * 3. Send NET_LEAVING
+           */
+
+
+
           free(buffer);
           loop = false;
           break;
@@ -127,7 +135,6 @@ int main(int argc, char **argv) {
         free(buffer);
 
       } else if(pollFds[i].revents & POLLIN && i == 2) {
-        printf("dumbas\n");
         struct sockaddr_in predAddr;
         socklen_t len = sizeof(predAddr);
         int predecessor = accept(pollFds[i].fd, (struct sockaddr*)&predAddr, &len);
@@ -138,7 +145,6 @@ int main(int argc, char **argv) {
         pollFds[currentConnections].fd = predecessorSock.socketFd;
         pollFds[currentConnections].events = POLLIN;
         currentConnections++;
-        // printf("dumvas2\n");
         break;
 
 
@@ -149,19 +155,19 @@ int main(int argc, char **argv) {
         printf("Read %d bytes from %ld sock %d\n", readValue, i, pollFds[i].fd);
 
         /*Connection dropped, close socket.*/
-        if(readValue <= 0){
-          printf("skratt\n");
+        if(readValue <= 0) {
+          //Socket closed unexpectedly, shutdown.
           loop = false;
           break;
         }
         switch(buffer[0]) {
           case NET_JOIN: {
-            // printf("galle\n");
             struct NET_JOIN_PDU njp;
             memcpy(&njp, buffer, sizeof(struct NET_JOIN_PDU));
             handleNetJoin(njp, node, successorSock.socketFd);
             break;
           }
+          /* Expected disconnection, close the socket. */
           case NET_CLOSE_CONNECTION: {
             close(pollFds[i].fd);
             currentConnections--;
@@ -192,9 +198,6 @@ int main(int argc, char **argv) {
       }
     }
   }
-
-
-
 
   shutdown(successorSock.socketFd, SHUT_RDWR);
   shutdown(predecessorSock.socketFd, SHUT_RDWR);
@@ -239,7 +242,7 @@ void lookupValue(struct VAL_LOOKUP_PDU vlp, struct node *node, int socket, int a
       copyValueToPDU(&vlrp.email, tableEntry->email, vlrp.email_length);
 
     }
-    vlrp.PAD = 0; /* Eventuell bug */
+    vlrp.PAD = 0;
     memset(&vlrp.PAD2, 0, sizeof(vlrp.PAD2));
 
     size = sizeof(vlrp) - 16 + vlrp.name_length + vlrp.email_length;
@@ -265,6 +268,7 @@ void lookupValue(struct VAL_LOOKUP_PDU vlp, struct node *node, int socket, int a
     free(vlrp.email);
 
   } else {
+    /* Entry was not within the node's index-range. Send to successor. */
     printf("Jag fanns inte här\n");
 
     send(socket, &vlp, sizeof(vlp), 0);
@@ -390,14 +394,6 @@ struct VAL_INSERT_PDU extractPDU(uint8_t *buffer, int *bufferSize) {
  */
 void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
   printf("JOIN PDU \n");
-  // printf("type %d\n", njp.type);
-  // printf("src_address %s\n", njp.src_address);
-  // printf("src_port %d\n", ntohs(njp.src_port));
-  // printf("max_span %d\n", njp.max_span);
-  // printf("%s %s\n", "max_address", njp.max_address);
-  // printf("%s %d\n", "max_port", njp.max_port);
-
-
 
   struct NET_JOIN_RESPONSE_PDU njrp;
   /* One node in network */
@@ -449,19 +445,21 @@ void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
   int connection = connectToSocket(njp.src_port, njp.src_address, socket);
   node->successor = createNode(njp.src_address, ntohs(njp.src_port));
   if(connection == 0) {
-    printf("Connected successfully.\n");
-    printf("Sending response to socket %d\n", socket);
+    printf("Connected successfully to successor.\n");
+    printf("Sending response on socket: %d\n", socket);
     send(socket, &njrp, sizeof(struct NET_JOIN_RESPONSE_PDU), 0);
 
-    //TODO! Transfer table-entries.
     transferTableEntries(socket, node);
   } else {
     perror("connect");
   }
+}
 
-
-
-
+/**
+ *
+ * socket - predecessor
+ */
+void leaveNetwork(int socket, struct node* node) {
 
 }
 
