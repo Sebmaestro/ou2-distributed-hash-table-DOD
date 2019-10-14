@@ -9,7 +9,7 @@
 
 //https://git.cs.umu.se/courses/5dv197ht19/tree/master/assignment2
 int main(int argc, char **argv) {
-
+  printf("hash: %d\n", hash_ssn("199807184198"));
   int trackerPort;
   char *address;
   handleArguments(argc, argv, &trackerPort, &address);
@@ -50,16 +50,6 @@ int main(int argc, char **argv) {
   struct pollfd pollFds[MAXCLIENTS];
   pollFds[0].fd = STDIN_FILENO;
   pollFds[0].events = POLLIN;
-  // pollFds[1].fd = successorSock.socketFd;
-  // pollFds[1].events = POLLIN;
-  // pollFds[2].fd = predecessorSock.socketFd;
-  // pollFds[2].events = POLLIN;
-  // pollFds[3].fd = newNodeSock.socketFd;
-  // pollFds[3].events = POLLIN;
-  // pollFds[4].fd = trackerSock.socketFd;
-  // pollFds[4].events = POLLIN;
-  // pollFds[5].fd = agentSock.socketFd;
-  // pollFds[5].events = POLLIN;
   pollFds[1].fd = agentSock.socketFd;
   pollFds[1].events = POLLIN;
   pollFds[2].fd = newNodeSock.socketFd;
@@ -102,6 +92,7 @@ int main(int argc, char **argv) {
     pollFds[currentConnections].fd = predecessorSock.socketFd;
     pollFds[currentConnections].events = POLLIN;
     currentConnections++;
+    free(buffer);
   }
 
 
@@ -131,13 +122,8 @@ int main(int argc, char **argv) {
           free(buffer);
           loop = false;
           break;
-        } else if (strncmp("insert\n", buffer, 6) == 0) {
-
-          sendInsert(buffer, successorSock.socketFd);
-
-
-
         }
+
         free(buffer);
 
       } else if(pollFds[i].revents & POLLIN && i == 2) {
@@ -248,16 +234,9 @@ void lookupValue(struct VAL_LOOKUP_PDU vlp, struct node *node, int socket, int a
       printf("Finns lagrat:\n");
       strcpy((char*)vlrp.ssn, tableEntry->ssn);
       vlrp.name_length = strlen(tableEntry->name) + 1;
-      vlrp.name = malloc(vlrp.name_length * sizeof(char));
-      strcpy((char*)vlrp.name, tableEntry->name);
+      copyValueToPDU(&vlrp.name, tableEntry->name, vlrp.name_length);
       vlrp.email_length = strlen(tableEntry->email) + 1;
-      vlrp.email = malloc(vlrp.email_length * sizeof(char));
-      strcpy((char*)vlrp.email, tableEntry->email);
-      printf("ssn = %s\n", vlrp.ssn);
-      printf("name = %s\n", vlrp.name);
-      printf("email = %s\n", vlrp.email);
-
-
+      copyValueToPDU(&vlrp.email, tableEntry->email, vlrp.email_length);
 
     }
     vlrp.PAD = 0; /* Eventuell bug */
@@ -282,6 +261,8 @@ void lookupValue(struct VAL_LOOKUP_PDU vlp, struct node *node, int socket, int a
 
     struct sockaddr_in address = getSocketAddress(htons(vlp.sender_port), vlp.sender_address);
     sendPDU(agentSocket, address, buffer, size);
+    free(vlrp.name);
+    free(vlrp.email);
 
   } else {
     printf("Jag fanns inte här\n");
@@ -311,7 +292,10 @@ void removeValue(struct VAL_REMOVE_PDU vrp, struct node *node, int socket) {
  *
  */
  bool isInRange(struct node *node, char *ssn) {
-   hash_t hashIndex = node->hashTable->hash_func(ssn) % node->hashTable->max_entries;
+
+   //IS THIS THE RIGHT WAY?!?!?! OR ONLY USE HASH_FUNC?!
+   //hash_t hashIndex = node->hashTable->hash_func(ssn) % node->hashTable->max_entries;
+   hash_t hashIndex = hash_ssn(ssn);
    printf("Hash index is: %d. Search and destroy for node with same hash index\n", hashIndex);
    /* In index, node will receive value */
    if (node->hashMin <= hashIndex && hashIndex <= node->hashMax) {
@@ -335,6 +319,8 @@ void handleValInsert(struct VAL_INSERT_PDU vip, struct node *node, int socket, i
   } else {
     printf("Sending values to next node\n");
     send(socket, buffer, size, 0);
+    free(vip.name);
+    free(vip.email);
   }
 
 }
@@ -392,57 +378,6 @@ struct VAL_INSERT_PDU extractPDU(uint8_t *buffer, int *bufferSize) {
 
   return vip;
 }
-
-
-/**
- *
- *
- *
- *
- */
- void sendInsert(char *buffer, int socket) {
-   // char *newStr = buffer+7;
-   // printf("%s\n", newStr);
-   //
-   //
-   // char *ssn;
-   // printf("%s\n", ssn = strsep(&newStr, ","));
-   //
-   // char *name;
-   // name = strsep(&newStr, ",");
-   // name++;
-   // printf("%s\n", name);
-   //
-   // char *email;
-   // email = strsep(&newStr, ",");
-   // email++;
-   // printf("%s\n", email);
-   //
-   //
-   // struct VAL_INSERT_PDU vip;
-   // printf("Sizeof %d\n", sizeof(vip));
-   // vip.type = VAL_INSERT;
-   // memset(&vip.PAD2, 0, sizeof(vip.PAD2));
-   //
-   // strcpy((char*)vip.ssn, ssn);
-   //
-   // vip.PAD = 0;
-   //
-   // vip.name_length = strlen(name);
-   // vip.name = malloc(vip.name_length+1*sizeof(char));
-   // strcpy((char*)vip.name, name);
-   // printf("%s\n", vip.name);
-   //
-   //
-   // vip.email_length = strlen(email);
-   // vip.email = malloc(vip.email_length+1*sizeof(char));
-   // strcpy((char*)vip.email, email);
-   // printf("%s\n", vip.email);
-   //
-   // printf("Sizeof %d\n", sizeof(vip));
-   // send(socket, &vip, sizeof(vip)+sizeof(vip.name)+sizeof(vip.email), 0);
- }
-
 
 
 
@@ -517,6 +452,9 @@ void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
     printf("Connected successfully.\n");
     printf("Sending response to socket %d\n", socket);
     send(socket, &njrp, sizeof(struct NET_JOIN_RESPONSE_PDU), 0);
+
+    //TODO! Transfer table-entries.
+    transferTableEntries(socket, node);
   } else {
     perror("connect");
   }
@@ -524,7 +462,55 @@ void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
 
 
 
+
 }
+
+void transferTableEntries(int socket, struct node *node) {
+  struct table_entry *entry;
+  while((entry = get_entry_iterator(node->hashTable)) != NULL){
+      if(!isInRange(node, entry->ssn)){
+        /* Not within the node's range anymore, transfer to successor. */
+        struct VAL_INSERT_PDU vip;
+        vip.type = VAL_INSERT;
+        strcpy((char*)vip.ssn, entry->ssn);
+        vip.name_length = strlen(entry->name) + 1;
+        vip.PAD = 0;
+        copyValueToPDU(&vip.name, entry->name, vip.name_length);
+        vip.email_length = strlen(entry->email) + 1;
+        memset(&vip.PAD2, 0, sizeof(vip.PAD2));
+        copyValueToPDU(&vip.email, entry->email, vip.email_length);
+
+        int size = sizeof(vip) - 16 + vip.name_length + vip.email_length;
+        uint8_t *buffer = calloc(size, sizeof(uint8_t));
+
+        int copiedBytes = 0;
+
+        memcpy(buffer, &vip, 16);
+        copiedBytes = 16;
+
+        memcpy(buffer + copiedBytes, vip.name, vip.name_length);
+        copiedBytes = copiedBytes + vip.name_length;
+        memcpy(buffer + copiedBytes, &vip.email_length, 1);
+        copiedBytes++;
+        memcpy(buffer + copiedBytes, vip.PAD2, sizeof(vip.PAD2));
+        copiedBytes = copiedBytes + sizeof(vip.PAD2);
+        memcpy(buffer + copiedBytes, vip.email, vip.email_length);
+
+        send(socket, buffer, size, 0);
+
+        printf("bordet tar bort\n");
+        table_remove(node->hashTable, entry->ssn);
+      }
+  }
+
+}
+
+void copyValueToPDU(uint8_t **dest, char *toCopy, int len) {
+  *dest = malloc(len * sizeof(char));
+  strcpy((char*)*dest, toCopy);
+}
+
+
 
 /**
  *
