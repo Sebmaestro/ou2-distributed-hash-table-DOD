@@ -172,6 +172,7 @@ int main(int argc, char **argv) {
               pollFds[currentConnections].fd = sock;
               pollFds[currentConnections].events = POLLIN;
               currentConnections++;
+              printf("gayyyyyyyyyyyyyyyyyyyyyyyyyyyy\n");
             }
             break;
           }
