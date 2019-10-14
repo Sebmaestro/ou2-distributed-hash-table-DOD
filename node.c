@@ -194,6 +194,7 @@ int main(int argc, char **argv) {
             break;
           }
           case NET_NEW_RANGE: {
+            printf("Joller\n");
             struct NET_NEW_RANGE_PDU nnrp;
             memcpy(&nnrp, buffer, sizeof(nnrp));
             node->hashMax = nnrp.new_range_end;
@@ -206,7 +207,7 @@ int main(int argc, char **argv) {
             close(successorSock.socketFd);
 
             connectToSocket(nlp.next_port, nlp.next_address, successorSock.socketFd);
-
+            break;
           }
         }
 
@@ -316,7 +317,7 @@ void removeValue(struct VAL_REMOVE_PDU vrp, struct node *node, int socket) {
    //IS THIS THE RIGHT WAY?!?!?! OR ONLY USE HASH_FUNC?!
    //hash_t hashIndex = node->hashTable->hash_func(ssn) % node->hashTable->max_entries;
    hash_t hashIndex = hash_ssn(ssn);
-   printf("Hash index is: %d. Search and destroy for node with same hash index\n", hashIndex);
+   //printf("Hash index is: %d. Search and destroy for node with same hash index\n", hashIndex);
    /* In index, node will receive value */
    if (node->hashMin <= hashIndex && hashIndex <= node->hashMax) {
      return true;
@@ -493,7 +494,10 @@ void leaveNetwork(int predSocket, struct node* node, int succSock) {
    nnrp.type = NET_NEW_RANGE;
    nnrp.new_range_end = node->hashMax;
 
-   send(predSocket, &nnrp, sizeof(nnrp), 0);
+   printf("Sendar första. Socket: %d\n", predSocket);
+   if(send(predSocket, &nnrp, sizeof(nnrp), 0) == -1) {
+     perror("send1");
+   }
    node->hashMin = -1;
    node->hashMax = -1;
 
@@ -505,7 +509,10 @@ void leaveNetwork(int predSocket, struct node* node, int succSock) {
    nlp.pad = 0;
    nlp.next_port = htons(node->successor->port);
 
-   send(predSocket, &nlp, sizeof(nlp), 0);
+   printf("Sendar andra. Socket: %d\n", predSocket);
+   if (send(predSocket, &nlp, sizeof(nlp), 0) == -1) {
+     perror("send2");
+   }
 
 }
 
