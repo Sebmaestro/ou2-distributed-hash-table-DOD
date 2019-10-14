@@ -54,6 +54,8 @@ int main(int argc, char **argv) {
   pollFds[1].events = POLLIN;
   pollFds[2].fd = newNodeSock.socketFd;
   pollFds[2].events = POLLIN;
+  // pollFds[3].fd = successorSock.socketFd;
+  // pollFds[3].events = POLLIN;
 
   listen(newNodeSock.socketFd, 5);
   /* Empty response, I.E no node in network */
@@ -165,12 +167,18 @@ int main(int argc, char **argv) {
           case NET_JOIN: {
             struct NET_JOIN_PDU njp;
             memcpy(&njp, buffer, sizeof(struct NET_JOIN_PDU));
-            handleNetJoin(njp, node, successorSock.socketFd);
+            int sock = handleNetJoin(njp, node, successorSock.socketFd);
+            if (sock != -1) {
+              pollFds[currentConnections].fd = sock;
+              pollFds[currentConnections].events = POLLIN;
+              currentConnections++;
+            }
             break;
           }
           /* Expected disconnection, close the socket. */
           case NET_CLOSE_CONNECTION: {
             close(pollFds[i].fd);
+            pollFds[i] = pollFds[currentConnections -1];
             currentConnections--;
             i--;
             continue;
@@ -204,7 +212,10 @@ int main(int argc, char **argv) {
             struct NET_LEAVING_PDU nlp;
             memcpy(&nlp, buffer, sizeof(nlp));
 
-            close(successorSock.socketFd);
+            close(pollFds[i].fd);
+            pollFds[i] = pollFds[currentConnections -1];
+            currentConnections--;
+            i--;
 
             connectToSocket(nlp.next_port, nlp.next_address, successorSock.socketFd);
             break;
@@ -409,7 +420,7 @@ struct VAL_INSERT_PDU extractPDU(uint8_t *buffer, int *bufferSize) {
  *
  *
  */
-void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
+int handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
   printf("JOIN PDU \n");
 
   struct NET_JOIN_RESPONSE_PDU njrp;
@@ -432,7 +443,7 @@ void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
       printf("Updating max-span to: %d! Trying to send to socket %d\n", njp.max_span, socket);
       send(socket, &njp, sizeof(struct NET_JOIN_PDU), 0);
 
-      return;
+      return -1;
     }
 
     /* Q13 */
@@ -456,7 +467,7 @@ void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
       /* Q14 */
       send(socket, &njp, sizeof(struct NET_JOIN_PDU), 0);
       printf("Did not update max-span. Trying to send to socket %d\n", socket);
-      return;
+      return -1;
     }
   }
   int connection = connectToSocket(njp.src_port, njp.src_address, socket);
@@ -467,9 +478,11 @@ void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
     send(socket, &njrp, sizeof(struct NET_JOIN_RESPONSE_PDU), 0);
 
     transferTableEntries(socket, node);
+    return socket;
   } else {
     perror("connect");
   }
+  return -1;
 }
 
 /**

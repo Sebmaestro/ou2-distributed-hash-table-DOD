@@ -39,7 +39,7 @@ void sendNetJoin(struct NET_GET_NODE_RESPONSE_PDU ngnrp, char *ip,
                  struct socketData agentSock);
 void leaveNetwork(int predSocket, struct node* node, int succSock);
 void transferTableEntries(int socket, struct node *node);
-void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket);
+int handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket);
 void copyValueToPDU(uint8_t **dest, char *toCopy, int len);
 void getHashRanges(struct node *node, uint8_t *minS, uint8_t *maxS);
 struct node* createNode(char *ipAddress, int port);
