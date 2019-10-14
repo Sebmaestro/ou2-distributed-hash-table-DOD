@@ -126,6 +126,7 @@ int main(int argc, char **argv) {
            */
 
 
+          leaveNetwork(predecessorSock.socketFd, node, successorSock.socketFd);
 
           free(buffer);
           loop = false;
@@ -191,6 +192,21 @@ int main(int argc, char **argv) {
             memcpy(&vlp, buffer, sizeof(vlp));
             lookupValue(vlp, node, successorSock.socketFd, agentSock.socketFd);
             break;
+          }
+          case NET_NEW_RANGE: {
+            struct NET_NEW_RANGE_PDU nnrp;
+            memcpy(&nnrp, buffer, sizeof(nnrp));
+            node->hashMax = nnrp.new_range_end;
+            break;
+          }
+          case NET_LEAVING: {
+            struct NET_LEAVING_PDU nlp;
+            memcpy(&nlp, buffer, sizeof(nlp));
+
+            close(successorSock.socketFd);
+
+            connectToSocket(nlp.next_port, nlp.next_address, successorSock.socketFd);
+
           }
         }
 
@@ -458,8 +474,38 @@ void handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
 /**
  *
  * socket - predecessor
+ * node - swag
  */
-void leaveNetwork(int socket, struct node* node) {
+void leaveNetwork(int predSocket, struct node* node, int succSock) {
+  /* Node is leaving the network. */
+
+  /* 1. Send NET_NEW_RANGE
+   * 2. Transfer all table_entries
+   * 3. Send NET_LEAVING
+   */
+
+   struct NET_CLOSE_CONNECTION_PDU nccp;
+   nccp.type = NET_CLOSE_CONNECTION;
+   send(succSock, &nccp, sizeof(nccp), 0);
+   close(succSock);
+
+   struct NET_NEW_RANGE_PDU nnrp;
+   nnrp.type = NET_NEW_RANGE;
+   nnrp.new_range_end = node->hashMax;
+
+   send(predSocket, &nnrp, sizeof(nnrp), 0);
+   node->hashMin = -1;
+   node->hashMax = -1;
+
+   transferTableEntries(predSocket, node);
+
+   struct NET_LEAVING_PDU nlp;
+   nlp.type = NET_LEAVING;
+   strcpy(nlp.next_address, node->successor->ip);
+   nlp.pad = 0;
+   nlp.next_port = htons(node->successor->port);
+
+   send(predSocket, &nlp, sizeof(nlp), 0);
 
 }
 
