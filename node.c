@@ -75,6 +75,10 @@ int main(int argc, char **argv) {
 
     printf("Accepted predecessor on socket: %d\n", predecessor);
     predecessorSock.socketFd = predecessor;
+    pollFds[currentConnections].fd = predecessorSock.socketFd;
+    pollFds[currentConnections].events = POLLIN;
+    currentConnections++;
+
     uint8_t *buffer = calloc(256, sizeof(uint8_t));
     if(recv(predecessorSock.socketFd, buffer, BUFFERSIZE-1, 0) == -1) {
       perror("recv");
@@ -91,9 +95,10 @@ int main(int argc, char **argv) {
     node->hashMin = njrp.range_start;
     connectToSocket(njrp.next_port, njrp.next_address, successorSock.socketFd);
     node->successor = createNode(njrp.next_address, ntohs(njrp.next_port));
-    pollFds[currentConnections].fd = predecessorSock.socketFd;
+    pollFds[currentConnections].fd = successorSock.socketFd;
     pollFds[currentConnections].events = POLLIN;
     currentConnections++;
+
     free(buffer);
   }
 
@@ -103,6 +108,7 @@ int main(int argc, char **argv) {
 
   bool loop = true;
   while (loop) {
+
     /* Ping tracker */
     printf("\nMy hash-ranges: min: %d max: %d.\n", node->hashMin, node->hashMax);
     sendNetAlive(trackerSock.socketFd, agentSock, trackerAddress);
@@ -116,8 +122,8 @@ int main(int argc, char **argv) {
       /* Reading from stdin */
       if (pollFds[i].revents & POLLIN && i == 0) {
         char *buffer = calloc(BUFFERSIZE, sizeof(char));
-				int readValue = read(pollFds[i].fd, buffer, BUFFERSIZE-1);
-        if(strcmp("quit\n", buffer) == 0 || readValue <= 0) {
+				int readBytes = read(pollFds[i].fd, buffer, BUFFERSIZE-1);
+        if(strcmp("quit\n", buffer) == 0 || readBytes <= 0) {
 
 
           /* Node is leaving the network. */
@@ -153,16 +159,37 @@ int main(int argc, char **argv) {
 
         /* Reading from pollin */
       } else if(pollFds[i].revents & POLLIN) {
-        uint8_t *buffer = calloc(256, sizeof(uint8_t));
-				int readValue = read(pollFds[i].fd, buffer, BUFFERSIZE-1);
-        printf("Read %d bytes from %ld sock %d\n", readValue, i, pollFds[i].fd);
+        uint8_t *buf = calloc(256, sizeof(uint8_t));
+
+
+
+				int readBytes = 10101;
+        uint8_t *buffer;
+
+        if(i == 1){
+          buffer = receivePDU(pollFds[i].fd);
+        } else {
+          printf("weed!\n");
+          readBytes = read(pollFds[i].fd, buf, 1);
+          printf("readBytes = %d\n", readBytes);
+          uint8_t type = buf[0];
+          printf("Type %d\n", type);
+          if(type == 0){
+            continue;
+          }
+          buffer = readTCPMessage(pollFds[i].fd, getPDUSize(type), type);
+        }
+
+
+        printf("Read %d bytes from %ld sock %d\n", readBytes, i, pollFds[i].fd);
 
         /*Connection dropped, close socket.*/
-        if(readValue <= 0) {
+        if(readBytes <= 0) {
           //Socket closed unexpectedly, shutdown.
           loop = false;
           break;
         }
+
         switch(buffer[0]) {
           case NET_JOIN: {
             struct NET_JOIN_PDU njp;
@@ -172,12 +199,12 @@ int main(int argc, char **argv) {
               pollFds[currentConnections].fd = sock;
               pollFds[currentConnections].events = POLLIN;
               currentConnections++;
-              printf("gayyyyyyyyyyyyyyyyyyyyyyyyyyyy\n");
             }
             break;
           }
           /* Expected disconnection, close the socket. */
           case NET_CLOSE_CONNECTION: {
+            printf("Closing connection to %d\n", pollFds[i].fd);
             close(pollFds[i].fd);
             pollFds[i] = pollFds[currentConnections -1];
             currentConnections--;
@@ -210,15 +237,25 @@ int main(int argc, char **argv) {
             break;
           }
           case NET_LEAVING: {
+            printf("NET leaving, read from socket: %d\n", pollFds[i].fd);
             struct NET_LEAVING_PDU nlp;
             memcpy(&nlp, buffer, sizeof(nlp));
 
             close(pollFds[i].fd);
-            pollFds[i] = pollFds[currentConnections -1];
-            currentConnections--;
-            i--;
-
-            connectToSocket(nlp.next_port, nlp.next_address, successorSock.socketFd);
+            // pollFds[i] = pollFds[currentConnections -1];
+            // currentConnections--;
+            // i--;
+            successorSock = createSocket(0, SOCK_STREAM);
+            int grabben = connectToSocket(nlp.next_port, nlp.next_address, successorSock.socketFd);
+            if(grabben < 0){
+              perror("connect");
+            }
+            free(node->successor);
+            printf("Trying to connect to %s on port %d\n", nlp.next_address, ntohs(nlp.next_port));
+            node->successor = createNode(nlp.next_address, ntohs(nlp.next_port));
+            pollFds[i].fd = successorSock.socketFd;
+            pollFds[i].events = POLLIN;
+            // currentConnections++;
             break;
           }
         }
@@ -227,7 +264,6 @@ int main(int argc, char **argv) {
       }
     }
   }
-
   shutdown(successorSock.socketFd, SHUT_RDWR);
   shutdown(predecessorSock.socketFd, SHUT_RDWR);
   shutdown(newNodeSock.socketFd, SHUT_RDWR);
@@ -508,7 +544,7 @@ void leaveNetwork(int predSocket, struct node* node, int succSock) {
    nnrp.type = NET_NEW_RANGE;
    nnrp.new_range_end = node->hashMax;
 
-   printf("Sendar första. Socket: %d\n", predSocket);
+   printf("Sendar första. Socket: %d size: %ld\n", predSocket, sizeof(nnrp));
    if(send(predSocket, &nnrp, sizeof(nnrp), 0) == -1) {
      perror("send1");
    }
@@ -523,8 +559,10 @@ void leaveNetwork(int predSocket, struct node* node, int succSock) {
    nlp.pad = 0;
    nlp.next_port = htons(node->successor->port);
 
-   printf("Sendar andra. Socket: %d\n", predSocket);
-   if (send(predSocket, &nlp, sizeof(nlp), 0) == -1) {
+   printf("Sendar andra. Socket: %d size: %ld \n", predSocket,sizeof(nlp));
+   int sendo = send(predSocket, &nlp, sizeof(nlp), 0);
+   printf("Sendo = %d\n", sendo);
+   if (sendo == -1) {
      perror("send2");
    }
 
@@ -704,6 +742,76 @@ char *retrieveNodeIp(struct socketData trackerSock,
   return NULL;
 }
 
+uint8_t *readTCPMessage(int socket, uint8_t expectedSize, uint8_t type) {
+  /* The type is already read */
+  uint8_t nameLen = 0;
+  uint8_t emailLen = 0;
+  int readBytes = 1;
+  uint8_t *buf = calloc(256, sizeof(uint8_t));
+  buf[0] = type;
+  if(type == VAL_INSERT){
+    expectedSize = expectedSize - 16;
+  }
+  while (readBytes != expectedSize) {
+
+
+    int r = read(socket, buf+readBytes, expectedSize-readBytes);
+    if(r != -1){
+      readBytes = readBytes + r;
+      if(type == VAL_INSERT){
+        printf("Reading insert\n");
+        printf("Read %d bytes\n", r);
+      }
+      /* Increase expectedSize if there's an name to read. */
+      if(type == VAL_INSERT && readBytes > 14 && nameLen == 0){
+        nameLen = buf[14];
+        printf("NAME LEN: %d\n", nameLen);
+        expectedSize = expectedSize + nameLen;
+      }
+      /* Increase expectedSize if there's an email to read */
+      if(type == VAL_INSERT && readBytes > 14+2+nameLen  && emailLen == 0){
+        emailLen = buf[14+2+nameLen];
+        printf("Email LEN: %d\n", emailLen);
+        expectedSize = expectedSize + emailLen;
+      }
+    } else {
+      perror("read");
+      return NULL;
+    }
+
+  }
+  // if(type == VAL_INSERT){
+  //   for (size_t i = 0; i < 255; i++) {
+  //     printf("Tja: %d %c -", buf[i], buf[i]);
+  //     if(i % 3 == 0){
+  //       printf("\n");
+  //     }
+  //
+  //   }
+  // }
+  return buf;
+}
+
+
+uint8_t getPDUSize(uint8_t type){
+  switch (type) {
+    case NET_JOIN:
+      return sizeof(struct NET_JOIN_PDU);
+    case NET_CLOSE_CONNECTION:
+      return sizeof(struct NET_CLOSE_CONNECTION_PDU);
+    case VAL_INSERT:
+      return sizeof(struct VAL_INSERT_PDU);
+    case VAL_REMOVE:
+      return sizeof(struct VAL_REMOVE_PDU);
+    case VAL_LOOKUP:
+      return sizeof(struct VAL_LOOKUP_PDU);
+    case NET_NEW_RANGE:
+      return sizeof(struct NET_NEW_RANGE_PDU);
+    case NET_LEAVING:
+      return sizeof(struct NET_LEAVING_PDU);
+  }
+  return -1;
+}
 
 /**
  *
@@ -740,24 +848,3 @@ struct node* createNode(char *ipAddress, int port) {
 	n->hashTable = table_create(hash_ssn, 256);
 	return n;
 }
-
-
-
-
-// int recv_all(int sockfd, void *buf, size_t len, int flags)
-// {
-//     size_t toread = len;
-//     char  *bufptr = (char*) buf;
-//
-//     while (toread > 0)
-//     {
-//         ssize_t rsz = recv(sockfd, bufptr, toread, flags);
-//         if (rsz <= 0)
-//             return rsz;  /* Error or other end closed cnnection */
-//
-//         toread -= rsz;  /* Read less next time */
-//         bufptr += rsz;  /* Next buffer position to read into */
-//     }
-//
-//     return len;
-// }

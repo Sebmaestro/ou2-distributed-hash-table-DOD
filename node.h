@@ -48,3 +48,5 @@ void handleValInsert(struct VAL_INSERT_PDU vip, struct node *node, int socket, i
 bool isInRange(struct node *node, char *ssn);
 void removeValue(struct VAL_REMOVE_PDU vrp, struct node *node, int socket);
 void lookupValue(struct VAL_LOOKUP_PDU vlp, struct node *node, int socket, int agentSocket);
+uint8_t getPDUSize(uint8_t type);
+uint8_t *readTCPMessage(int socket, uint8_t expectedSize, uint8_t type);
