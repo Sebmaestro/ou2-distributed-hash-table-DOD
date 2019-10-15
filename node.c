@@ -79,6 +79,7 @@ int main(int argc, char **argv) {
     pollFds[currentConnections].events = POLLIN;
     currentConnections++;
 
+    //TODO TCP READ!!!
     uint8_t *buffer = calloc(256, sizeof(uint8_t));
     if(recv(predecessorSock.socketFd, buffer, BUFFERSIZE-1, 0) == -1) {
       perror("recv");
