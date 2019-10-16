@@ -108,7 +108,6 @@ int main(int argc, char **argv) {
 
 
   bool loop = true;
-  int jolle = 0;
   while (loop) {
 
     /* Ping tracker */
@@ -177,7 +176,6 @@ int main(int argc, char **argv) {
           if(type == 0){
             continue;
           }
-          jolle++;
           buffer = readTCPMessage(pollFds[i].fd, getPDUSize(type), type);
         }
 
