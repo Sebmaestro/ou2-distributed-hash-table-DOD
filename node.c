@@ -1,4 +1,11 @@
-/* TODOOOOOOOOOOOO HALLÅ KOLLA HÄR. SÄTT IN SUCCESSORSOCK FÖR VARJE NOD I STRUCEN PAJAS */
+/*
+ * P2P implementation as a network of nodes communicating with each other over
+ * TCP/UDP sockets
+ *
+ * Authors: Sebastian Arledal - Pontus Fält / c17sal - dv17pft
+ * Date 16-10-19
+ */
+
 
 #include "node.h"
 
@@ -6,8 +13,10 @@
 #define MAXCLIENTS 6
 #define BUFFERSIZE 256
 
-
-//https://git.cs.umu.se/courses/5dv197ht19/tree/master/assignment2
+/*
+ * No main no gain
+ *
+ */
 int main(int argc, char **argv) {
   int trackerPort;
   char *address;
@@ -30,18 +39,17 @@ int main(int argc, char **argv) {
 
 
   /* This is the node ip we get when asking the tracker for it :^) */
-  //printf("\nSending STUN_LOOKUP to tracker.");
   char* nodeIp = retrieveNodeIp(trackerSock, trackerAddress);
   int publicPort = newNodeSock.port;
 
 
 
   struct node *node = createNode(nodeIp, publicPort);
+  free(nodeIp);
   printf("Node IP: %s\n", node->ip);
 
 
   struct NET_GET_NODE_RESPONSE_PDU ngnrp;
-  //printf("\nSending NET_GET_NODE to tracker.");
   ngnrp = sendNetGetNode(trackerSock, trackerAddress);
 
   int currentConnections = 3;
@@ -100,10 +108,15 @@ int main(int argc, char **argv) {
 
 
   bool loop = true;
+  int jolle = 0;
   while (loop) {
 
     /* Ping tracker */
     printf("\nHash-min: %d Hash-max: %d. publicPort: %d currentConnections: %d\n", node->hashMin, node->hashMax, node->port, currentConnections);
+    if(node->successor){
+      printf("My succer ip is: %s\n", node->successor->ip);
+    }
+
     sendNetAlive(trackerSock.socketFd, agentSock, trackerAddress);
 
     int ret = poll(pollFds, currentConnections, 7000);
@@ -117,9 +130,13 @@ int main(int argc, char **argv) {
         char *buffer = calloc(BUFFERSIZE, sizeof(char));
 				int readBytes = read(pollFds[i].fd, buffer, BUFFERSIZE-1);
         if(strcmp("quit\n", buffer) == 0 || readBytes <= 0) {
-
           /* Node is leaving the network. */
-          leaveNetwork(predecessorSock.socketFd, node, successorSock.socketFd);
+
+          if(node->successor != NULL){
+            printf("LEAVING NETWORK!!!\n");
+            leaveNetwork(predecessorSock.socketFd, node, successorSock.socketFd);
+          }
+
 
           free(buffer);
           loop = false;
@@ -149,15 +166,18 @@ int main(int argc, char **argv) {
         uint8_t *buffer;
 
         if(i == 1){
+          /* UDP */
           buffer = receivePDU(pollFds[i].fd);
         } else {
+          /* TCP */
           readBytes = read(pollFds[i].fd, buf, 1);
-          printf("Read %d bytes from %ld sock %d\n", readBytes, i, pollFds[i].fd);
+          // printf("Read %d bytes from %ld sock %d\n", readBytes, i, pollFds[i].fd);
           uint8_t type = buf[0];
           printf("Type %d\n", type);
           if(type == 0){
             continue;
           }
+          jolle++;
           buffer = readTCPMessage(pollFds[i].fd, getPDUSize(type), type);
         }
 
@@ -171,6 +191,7 @@ int main(int argc, char **argv) {
           break;
         }
 
+        bool breakLoop = false;
         switch(buffer[0]) {
           case NET_JOIN: {
             bool firstConnection = false;
@@ -186,18 +207,20 @@ int main(int argc, char **argv) {
               pollFds[currentConnections].events = POLLIN;
               if(firstConnection){
                 currentConnections++;
+                breakLoop = true;
               }
             }
+
             break;
           }
           /* Expected disconnection, close the socket. */
           case NET_CLOSE_CONNECTION: {
-            printf("Closing connection to %d\n", pollFds[i].fd);
+            printf("Closing connection to predeccessor %d\n", pollFds[i].fd);
             close(pollFds[i].fd);
             pollFds[i] = pollFds[currentConnections -1];
             currentConnections--;
             i--;
-            continue;
+            break;
           }
           case VAL_INSERT: {
             int bufferSize = 0;
@@ -218,7 +241,6 @@ int main(int argc, char **argv) {
             break;
           }
           case NET_NEW_RANGE: {
-            printf("Joller\n");
             struct NET_NEW_RANGE_PDU nnrp;
             memcpy(&nnrp, buffer, sizeof(nnrp));
             node->hashMax = nnrp.new_range_end;
@@ -232,23 +254,38 @@ int main(int argc, char **argv) {
             close(pollFds[i].fd);
 
             successorSock = createSocket(0, SOCK_STREAM);
+
+
+            table_free(node->successor->hashTable);
+            free(node->successor->ip);
+            free(node->successor);
+
+            if (strcmp(nlp.next_address, node->ip) == 0 && ntohs(nlp.next_port) == node->port) {
+              printf("Alone in network, should not connect to myself\n");
+              pollFds[i] = pollFds[currentConnections -1];
+              currentConnections--;
+              i--;
+              node->successor = NULL;
+              break;
+            }
             printf("Trying to connect to a new successor on %d\n", successorSock.socketFd);
             int con = connectToSocket(nlp.next_port, nlp.next_address, successorSock.socketFd);
             if(con < 0){
               /* Could not connect to a new successor */
               perror("connect");
             }
-            free(node->successor);
 
             node->successor = createNode(nlp.next_address, ntohs(nlp.next_port));
             pollFds[i].fd = successorSock.socketFd;
             pollFds[i].events = POLLIN;
-            printf("grabben i lådan %d\n", currentConnections);
             break;
           }
         }
         free(buf);
         free(buffer);
+        if(breakLoop){
+          break;
+        }
       }
     }
   }
@@ -258,11 +295,32 @@ int main(int argc, char **argv) {
   shutdown(trackerSock.socketFd, SHUT_RDWR);
   shutdown(agentSock.socketFd, SHUT_RDWR);
 
+  close(successorSock.socketFd);
+  close(predecessorSock.socketFd);
+  close(newNodeSock.socketFd);
+  close(trackerSock.socketFd);
+  close(agentSock.socketFd);
+
+  table_free(node->hashTable);
+  if(node->successor != NULL){
+    table_free(node->successor->hashTable);
+    free(node->successor->ip);
+    free(node->successor);
+  }
+
+  free(node->ip);
+  free(node);
   return 0;
 }
 
 /**
+ * function: lookupValue
  *
+ * Description: Looks in nodes hashtable for given ssn. If is in range and node
+ *              has ssn in table send back to asker. If in range but not found,
+ *              send empty response. Otherwise send request to next node.
+ *
+ * input: pdu, node, successorsocket, agentsocket
  *
  *
  */
@@ -328,23 +386,30 @@ void lookupValue(struct VAL_LOOKUP_PDU vlp, struct node *node, int socket, int a
 }
 
 /*
+ * function: removeValue
  *
+ * description: Removes value from node hashtable if it exists.
  *
- *
+ * input: pdu, node, socket
  *
  */
 void removeValue(struct VAL_REMOVE_PDU vrp, struct node *node, int socket) {
   if (isInRange(node, (char*)vrp.ssn)) {
     table_remove(node->hashTable, (char*)vrp.ssn);
-    printf("Removed value!\n");
+    printf("Removing value if exist!\n");
   } else {
     send(socket, &vrp, sizeof(vrp), 0);
   }
 }
 
 /*
+ * function: isInRange
  *
+ * description: Checks if asked ssn is in nodes hashrange
  *
+ * input: node, ssn
+ *
+ * output: true or false
  *
  */
  bool isInRange(struct node *node, char *ssn) {
@@ -362,73 +427,22 @@ void removeValue(struct VAL_REMOVE_PDU vrp, struct node *node, int socket) {
  *              containing the PDU is sent to the successor.
  * Input: INSERT_PDU, the node, successor-socket, size of buffer,
  *        buffer containing the INSERT_PDU.
- * Output: N/A
  */
 void handleValInsert(struct VAL_INSERT_PDU vip, struct node *node, int socket,
                     int size, uint8_t *buffer) {
   if (isInRange(node, (char*)vip.ssn)) {
-    printf("Inserting value!\n");
-    printf("SSN: %s\n", (char*)vip.ssn);
-    printf("Name: %s\n", (char*)vip.name);
-    printf("Email: %s\n", (char*)vip.email);
+    // printf("Inserting value!\n");
+    // printf("SSN: %s\n", (char*)vip.ssn);
+    // printf("Name: %s\n", (char*)vip.name);
+    // printf("Email: %s\n", (char*)vip.email);
     table_insert(node->hashTable, (char*)vip.ssn, (char*)vip.name, (char*)vip.email);
   } else {
     printf("Sending values to next node\n");
     send(socket, buffer, size, 0);
-    free(vip.name);
-    free(vip.email);
   }
-
+  free(vip.name);
+  free(vip.email);
 }
-
-/* Function: extractPDU
- * Description: Formats a VAL_INSERT_PDU from a buffer.
- * Input: the buffer, size of buffer
- * Output: Formatted VAL_INSERT_PDU
- */
-struct VAL_INSERT_PDU extractPDU(uint8_t *buffer, int *bufferSize) {
-  struct VAL_INSERT_PDU vip;
-
-  /*Size to copy*/
-  uint8_t size = sizeof(vip.type) + sizeof(vip.ssn) +
-                 sizeof(vip.name_length) + sizeof(vip.PAD);
-  /*Number of bytes read from buffer*/
-  uint8_t readBytes = 0;
-
-  /*Read type, ssn, name_length, PAD*/
-  memcpy(&vip, buffer, size);
-
-  /*Update readBytes and next size to read*/
-  readBytes = size;
-  size = vip.name_length;
-
-  /*Read name*/
-  vip.name = calloc(vip.name_length, sizeof(uint8_t));
-  memcpy(vip.name, buffer+readBytes, size);
-  readBytes = readBytes+vip.name_length;
-  size = sizeof(vip.email_length);
-
-  /*Read email_length*/
-  memcpy(&vip.email_length, buffer+readBytes, size);
-
-  readBytes = readBytes + sizeof(vip.email_length);
-  size = sizeof(vip.PAD2);
-
-  memcpy(&vip.PAD2, buffer+readBytes, size);
-
-  readBytes = readBytes + sizeof(vip.PAD2);
-  size = vip.email_length;
-  vip.email = calloc(vip.email_length, sizeof(uint8_t));
-  /*Read email*/
-  memcpy(vip.email, buffer+readBytes, vip.email_length);
-
-  readBytes = readBytes + vip.email_length;
-  *bufferSize = readBytes;
-
-  return vip;
-}
-
-
 
 
 /* Function: handleNetJoin
@@ -451,7 +465,7 @@ int handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
     strcpy(njrp.next_address, node->ip);
     njrp.PAD = 0;
     njrp.next_port = htons(node->port);
-    getHashRanges(node, &njrp.range_start, &njrp.range_end);
+    setHashRanges(node, &njrp.range_start, &njrp.range_end);
 
     /* More than one */
   } else {
@@ -469,7 +483,7 @@ int handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
 
     /* Q13 */
     if (strcmp(njp.max_address, node->ip) == 0 && ntohs(njp.max_port) == node->port) {
-      getHashRanges(node, &njrp.range_start, &njrp.range_end);
+      setHashRanges(node, &njrp.range_start, &njrp.range_end);
 
       njrp.type = NET_JOIN_RESPONSE;
       strcpy(njrp.next_address, node->successor->ip);
@@ -483,6 +497,9 @@ int handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
 
       struct socketData suc = createSocket(0, SOCK_STREAM);
       socket = suc.socketFd;
+      table_free(node->successor->hashTable);
+      free(node->successor->ip);
+      free(node->successor);
     } else {
       /* Q14 */
       send(socket, &njp, sizeof(struct NET_JOIN_PDU), 0);
@@ -516,10 +533,6 @@ int handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
 void leaveNetwork(int predSocket, struct node* node, int succSock) {
   /* Node is leaving the network. */
 
-  /* 1. Send NET_NEW_RANGE
-   * 2. Transfer all table_entries
-   * 3. Send NET_LEAVING
-   */
 
    struct NET_CLOSE_CONNECTION_PDU nccp;
    nccp.type = NET_CLOSE_CONNECTION;
@@ -547,13 +560,21 @@ void leaveNetwork(int predSocket, struct node* node, int succSock) {
 
    printf("Sending NET_LEAVING_PDU. Socket: %d size: %ld \n", predSocket,sizeof(nlp));
    int s = send(predSocket, &nlp, sizeof(nlp), 0);
-   printf("Sendo = %d\n", s);
    if (s == -1) {
      perror("send2");
    }
 
 }
 
+/**
+ * function: transferTableEntries
+ *
+ * description: Transfers all table entries in node that no longer belongs here
+ * to another node
+ *
+ * input: socket, node
+ *
+ */
 void transferTableEntries(int socket, struct node *node) {
   struct table_entry *entry;
   while((entry = get_entry_iterator(node->hashTable)) != NULL){
@@ -587,26 +608,26 @@ void transferTableEntries(int socket, struct node *node) {
 
         send(socket, buffer, size, 0);
         table_remove(node->hashTable, entry->ssn);
+        free(vip.name);
+        free(vip.email);
+        free(buffer);
       }
   }
   printf("Transfered values to successor\n");
 
 }
 
-void copyValueToPDU(uint8_t **dest, char *toCopy, int len) {
-  *dest = malloc(len * sizeof(char));
-  strcpy((char*)*dest, toCopy);
-}
-
 
 
 /**
+ * function: setHashRanges
  *
+ * description: sets min and max hash range for node and its successor
  *
+ * input: node, min and max to be sent to successor
  *
- *48585
  */
-void getHashRanges(struct node *node, uint8_t *minS, uint8_t *maxS) {
+void setHashRanges(struct node *node, uint8_t *minS, uint8_t *maxS) {
 
   float minP = (float)node->hashMin;
   float maxP = (float)node->hashMax;
@@ -617,14 +638,14 @@ void getHashRanges(struct node *node, uint8_t *minS, uint8_t *maxS) {
 
   node->hashMax = (int)maxP;
   node->hashMin = (int)minP;
-
-  //TODO: SENT NET JOIN RESPONSE WITH minS AND maxS.
 }
 
 /**
+ * function: sendNetJoin
  *
+ * description: Creates pdu and sends the request to a node in network
  *
- *
+ * input: pdu, ip, socket
  *
  */
 void sendNetJoin(struct NET_GET_NODE_RESPONSE_PDU ngnrp, char *ip,
@@ -645,15 +666,17 @@ void sendNetJoin(struct NET_GET_NODE_RESPONSE_PDU ngnrp, char *ip,
 
   struct sockaddr_in nodeAddress = getSocketAddress(ntohs(ngnrp.port), ngnrp.address);
 
-  //Send Join-request over UDP.
+  /* Send Join-request over UDP. */
   sendPDU(agentSock.socketFd, nodeAddress, &njp, sizeof(struct NET_JOIN_PDU));
 }
 
 
 /**
+ * function: sendNetAlive
  *
+ * description: Creates pdu and sends net alive to tracker
  *
- *
+ * input: trackersocket, agentsocket, trackeraddress
  *
  */
 void sendNetAlive(int trackerSocket, struct socketData agentSock, struct sockaddr_in trackerAddress) {
@@ -667,9 +690,14 @@ void sendNetAlive(int trackerSocket, struct socketData agentSock, struct sockadd
 }
 
 /**
+ * function: sendNetGetNode
  *
+ * description: Sends getnode request no tracker to get address to a node in
+ *              network
  *
+ * input: trackersocket, trackerAddress
  *
+ * output: response from tracker as pdu
  *
  */
 struct NET_GET_NODE_RESPONSE_PDU sendNetGetNode(struct socketData trackerSock, struct sockaddr_in trackerAddress) {
@@ -697,7 +725,14 @@ struct NET_GET_NODE_RESPONSE_PDU sendNetGetNode(struct socketData trackerSock, s
 }
 
 /**
- * Retrieves ip for node with STUN request and stores it in the ip-pointer.
+ * Function: retrieveNodeIp
+ *
+ * description: Retrieves ip for node with STUN request and stores it in the ip-pointer.
+ *
+ * input: trackersocket, trackerAddress
+ *
+ * output: ip
+ *
  */
 char *retrieveNodeIp(struct socketData trackerSock,
                         struct sockaddr_in trackerAddress) {
@@ -715,6 +750,7 @@ char *retrieveNodeIp(struct socketData trackerSock,
       memcpy(&srp, buff, sizeof(struct STUN_RESPONSE_PDU));
       uint8_t *addr = calloc(ADDRESS_LENGTH, sizeof(uint8_t));
       memcpy(addr, srp.address, sizeof(srp.address));
+      free(buff);
       return (char*)addr;
 
   }
@@ -723,80 +759,14 @@ char *retrieveNodeIp(struct socketData trackerSock,
   return NULL;
 }
 
-uint8_t *readTCPMessage(int socket, uint8_t expectedSize, uint8_t type) {
-  /* The type is already read */
-  uint8_t nameLen = 0;
-  uint8_t emailLen = 0;
-  int readBytes = 1;
-  uint8_t *buf = calloc(256, sizeof(uint8_t));
-  buf[0] = type;
-  if(type == VAL_INSERT){
-    expectedSize = expectedSize - 16;
-  }
-  while (readBytes != expectedSize) {
-
-
-    int r = read(socket, buf+readBytes, expectedSize-readBytes);
-    if(r != -1){
-      readBytes = readBytes + r;
-      if(type == VAL_INSERT){
-        printf("Reading insert\n");
-        printf("Read %d bytes\n", r);
-      }
-      /* Increase expectedSize if there's an name to read. */
-      if(type == VAL_INSERT && readBytes > 14 && nameLen == 0){
-        nameLen = buf[14];
-        printf("NAME LEN: %d\n", nameLen);
-        expectedSize = expectedSize + nameLen;
-      }
-      /* Increase expectedSize if there's an email to read */
-      if(type == VAL_INSERT && readBytes > 14+2+nameLen  && emailLen == 0){
-        emailLen = buf[14+2+nameLen];
-        printf("Email LEN: %d\n", emailLen);
-        expectedSize = expectedSize + emailLen;
-      }
-    } else {
-      perror("read");
-      return NULL;
-    }
-
-  }
-  return buf;
-}
-
-
-uint8_t getPDUSize(uint8_t type){
-  switch (type) {
-    case NET_GET_NODE_RESPONSE:
-      return sizeof(struct NET_GET_NODE_RESPONSE_PDU);
-    case NET_ALIVE:
-      return sizeof(struct NET_ALIVE_PDU);
-    case NET_CLOSE_CONNECTION:
-      return sizeof(struct NET_CLOSE_CONNECTION_PDU);
-    case NET_GET_NODE:
-      return sizeof(struct NET_GET_NODE_PDU);
-    case NET_JOIN:
-      return sizeof(struct NET_JOIN_PDU);
-    case NET_JOIN_RESPONSE:
-      return sizeof(struct NET_JOIN_RESPONSE_PDU);
-    case NET_NEW_RANGE:
-      return sizeof(struct NET_NEW_RANGE_PDU);
-    case NET_LEAVING:
-      return sizeof(struct NET_LEAVING_PDU);
-    case VAL_INSERT:
-      return sizeof(struct VAL_INSERT_PDU);
-    case VAL_REMOVE:
-      return sizeof(struct VAL_REMOVE_PDU);
-    case VAL_LOOKUP:
-      return sizeof(struct VAL_LOOKUP_PDU);
-
-  }
-  return -1;
-}
 
 /**
+ * function: handleArguments
  *
+ * description: Parses arguments and checks that they are correct when starting
+ *              program from commandline
  *
+ * input: command line args
  *
  *
  */
@@ -817,10 +787,20 @@ void handleArguments(int argc, char **argv, int *port, char **address) {
 	}
 }
 
-
+/**
+ * function: createNode
+ *
+ * description: Creates a node
+ *
+ * input: ip, port
+ *
+ * output: the node
+ *
+ */
 struct node* createNode(char *ipAddress, int port) {
 	struct node *n = calloc(1, sizeof(struct node));
-	n->ip = ipAddress;
+  n->ip = calloc(strlen(ipAddress) + 1, sizeof(char));
+	strcpy(n->ip, ipAddress);
 	n->port = port;
 	n->hashTable = table_create(hash_ssn, 256);
 	return n;

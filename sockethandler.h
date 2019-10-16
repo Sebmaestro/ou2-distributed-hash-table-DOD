@@ -11,6 +11,10 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <signal.h>
+#include "c_header/pdu.h"
+
+#ifndef _SOCKETHANDLER_
+#define _SOCKETHANDLER_
 
 struct socketData {
   int socketFd;
@@ -26,3 +30,7 @@ struct socketData createSocket(int socketPort, int type);
 struct sockaddr_in getSocketAddress(int trackerPort, char *address);
 
 int connectToSocket(int port, char *address, int socket);
+
+uint8_t *readTCPMessage(int socket, uint8_t expectedSize, uint8_t type);
+
+#endif

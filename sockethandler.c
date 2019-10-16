@@ -109,3 +109,43 @@ int connectToSocket(int port, char *address, int socket) {
   printf("Trying to connect to %s on port: %d\n", inet_ntoa(sockAdr.sin_addr), htons(sockAdr.sin_port));
   return connect(socket, (struct sockaddr*)&sockAdr, sizeof(sockAdr));
 }
+
+/*
+ *
+ *
+ */
+uint8_t *readTCPMessage(int socket, uint8_t expectedSize, uint8_t type) {
+  printf("tcp asshole <¤> u <¤>\n");
+  /* The type is already read */
+  uint8_t nameLen = 0;
+  uint8_t emailLen = 0;
+  int readBytes = 1;
+  uint8_t *buf = calloc(256, sizeof(uint8_t));
+  buf[0] = type;
+  if(type == VAL_INSERT){
+    expectedSize = expectedSize - 16;
+  }
+  while (readBytes != expectedSize) {
+
+
+    int r = read(socket, buf+readBytes, expectedSize-readBytes);
+    if(r != -1){
+      readBytes = readBytes + r;
+      /* Increase expectedSize if there's an name to read. */
+      if(type == VAL_INSERT && readBytes > 14 && nameLen == 0){
+        nameLen = buf[14];
+        expectedSize = expectedSize + nameLen;
+      }
+      /* Increase expectedSize if there's an email to read */
+      if(type == VAL_INSERT && readBytes > 14+2+nameLen  && emailLen == 0){
+        emailLen = buf[14+2+nameLen];
+        expectedSize = expectedSize + emailLen;
+      }
+    } else {
+      perror("read");
+      return NULL;
+    }
+
+  }
+  return buf;
+}
