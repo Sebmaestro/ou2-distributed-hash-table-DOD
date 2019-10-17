@@ -112,7 +112,12 @@ int main(int argc, char **argv) {
   while (loop) {
 
     /* Ping tracker */
-    printf("\nHash-min: %d Hash-max: %d. publicPort: %d currentConnections: %d\n", node->hashMin, node->hashMax, node->port, currentConnections);
+    printf("\nPinging tracker!\n");
+    printf("\x1B[31mhash-min: %d\n", node->hashMin);
+    printf("\x1B[31mhash-max: %d\n", node->hashMax);
+    printf("\x1B[32mpublicport: %d\n", node->port);
+    printf("\x1B[0mcurrentConnections: %d\n", currentConnections);
+
     if(node->successor){
       printf("My successor's ip is: %s\n", node->successor->ip);
     }
@@ -191,7 +196,7 @@ int main(int argc, char **argv) {
         }
 
         bool breakLoop = false;
-        
+
         switch(buffer[0]) {
           case NET_JOIN: {
             bool firstConnection = false;
