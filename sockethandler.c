@@ -1,10 +1,10 @@
 #include "sockethandler.h"
 
-/**
- *
- *
- *
- *
+/* Function: receivePDU
+ * Description: Receives a message from a UDP-socket and stores it
+ *              in a buffer.
+ * Input: UDP-socket
+ * Output: buffer containing message.
  */
 uint8_t *receivePDU(int socket) {
   uint8_t *buffer = calloc(256, sizeof(uint8_t));
@@ -23,28 +23,22 @@ uint8_t *receivePDU(int socket) {
   return NULL;
 }
 
-/**
- *
- *
- *
- *
+/* Function: sendPDU
+ * Description: sends a PDU through a UDP-socket to the given address.
+ * Input: UDP-socket, destination-address, PDU, size of PDU.
  */
 void sendPDU(int socket, struct sockaddr_in address, void *pduSend, int size) {
-  // printf("Sending PDU to: %s", inet_ntoa(address.sin_addr));
-  // printf(" on port: %d\n", ntohs(address.sin_port));
   int sent = sendto(socket, (uint8_t*)pduSend, size, 0,
          (struct sockaddr*)&address, sizeof(address));
-  if(sent < 0){
-           perror("sendto");
-         }
-  //printf("Bytes sent(holken i dolken) = %d\n", sent);
+  if(sent < 0) {
+    perror("sendto");
+  }
 }
 
-/**
- *
- *
- *
- *
+/* Function: createSocket
+ * Description: creates a socket with the given type and port.
+ * Input: port, UDP or TCP socket-type.
+ * Output: socketData struct
  */
 struct socketData createSocket(int socketPort, int type) {
 
@@ -83,10 +77,11 @@ struct socketData createSocket(int socketPort, int type) {
   return socketData;
 }
 
-/**
- * Creates a sockaddress to be used when talking with the (tracker). Struct
- * contains port and address to tracker cause obvious reasons
- *
+/* Function: getSocketAddress
+ * Description: forms a sockaddr_in struct from a portnumber and
+ *              an address in string-form.
+ * Input: port, ip-address
+ * Output: sockaddr_in struct
  */
 struct sockaddr_in getSocketAddress(int port, char *address) {
 
@@ -99,10 +94,10 @@ struct sockaddr_in getSocketAddress(int port, char *address) {
   return sockAddress;
 }
 
-/**
- *
- *
- *
+/* Function: connectToSocket
+ * Description: connects a socket to the given ip-address and port.
+ * Input: port, ip-address, socket to connect
+ * Output: successful or failed connection.
  */
 int connectToSocket(int port, char *address, int socket) {
   struct sockaddr_in sockAdr = getSocketAddress(ntohs(port), address);
@@ -110,9 +105,10 @@ int connectToSocket(int port, char *address, int socket) {
   return connect(socket, (struct sockaddr*)&sockAdr, sizeof(sockAdr));
 }
 
-/*
- *
- *
+/* Function: readTCPMessage
+ * Description: reads a message of expected size received on a TCP-socket.
+ * Input: TCP-socket, size of expected message, type of message
+ * Output: Buffer containing message. 
  */
 uint8_t *readTCPMessage(int socket, uint8_t expectedSize, uint8_t type) {
   /* The type is already read */
