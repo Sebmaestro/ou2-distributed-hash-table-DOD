@@ -115,7 +115,6 @@ int connectToSocket(int port, char *address, int socket) {
  *
  */
 uint8_t *readTCPMessage(int socket, uint8_t expectedSize, uint8_t type) {
-  printf("tcp asshole <¤> u <¤>\n");
   /* The type is already read */
   uint8_t nameLen = 0;
   uint8_t emailLen = 0;
@@ -123,6 +122,7 @@ uint8_t *readTCPMessage(int socket, uint8_t expectedSize, uint8_t type) {
   uint8_t *buf = calloc(256, sizeof(uint8_t));
   buf[0] = type;
   if(type == VAL_INSERT){
+    /* Because VAL_INSERT contains pointers we remove 16 bytes */
     expectedSize = expectedSize - 16;
   }
   while (readBytes != expectedSize) {
@@ -145,7 +145,6 @@ uint8_t *readTCPMessage(int socket, uint8_t expectedSize, uint8_t type) {
       perror("read");
       return NULL;
     }
-
   }
   return buf;
 }

@@ -75,6 +75,7 @@ int main(int argc, char **argv) {
     struct sockaddr_in predAddr;
     socklen_t len = sizeof(predAddr);
 
+    /* New node accepting predecessor (Old node already in network )*/
     int predecessor = accept(newNodeSock.socketFd, (struct sockaddr*)&predAddr, &len);
 
     printf("Accepted predecessor on socket: %d\n", predecessor);
@@ -113,7 +114,7 @@ int main(int argc, char **argv) {
     /* Ping tracker */
     printf("\nHash-min: %d Hash-max: %d. publicPort: %d currentConnections: %d\n", node->hashMin, node->hashMax, node->port, currentConnections);
     if(node->successor){
-      printf("My succer ip is: %s\n", node->successor->ip);
+      printf("My successor's ip is: %s\n", node->successor->ip);
     }
 
     sendNetAlive(trackerSock.socketFd, agentSock, trackerAddress);
@@ -190,6 +191,7 @@ int main(int argc, char **argv) {
         }
 
         bool breakLoop = false;
+        
         switch(buffer[0]) {
           case NET_JOIN: {
             bool firstConnection = false;
