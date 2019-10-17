@@ -26,6 +26,7 @@ int main(int argc, char **argv) {
   struct socketData successorSock = createSocket(0, SOCK_STREAM);
   printf("\nsuccessorSock: %d port: %d\n", successorSock.socketFd, successorSock.port);
   struct socketData predecessorSock;
+  predecessorSock.socketFd = -1;
   struct socketData newNodeSock = createSocket(0, SOCK_STREAM);
   printf("newNodeSock: %d port: %d\n", newNodeSock.socketFd, newNodeSock.port);
   struct socketData trackerSock = createSocket(0, SOCK_DGRAM);
@@ -69,8 +70,7 @@ int main(int argc, char **argv) {
     node->hashMax = 255;
   } else { /* Non empty response */
     /* Net join */
-    printf("\nNon-empty response from NET_GET_NODE_RESPONSE\n");
-	  printf("There are other nodes in the network.\n");
+	  printf("\nThere are other nodes in the network. Attempting to join...\n");
     sendNetJoin(ngnrp, node->ip, agentSock);
     struct sockaddr_in predAddr;
     socklen_t len = sizeof(predAddr);
@@ -138,7 +138,6 @@ int main(int argc, char **argv) {
           /* Node is leaving the network. */
 
           if(node->successor != NULL){
-            printf("LEAVING NETWORK!!!\n");
             leaveNetwork(predecessorSock.socketFd, node, successorSock.socketFd);
           }
 
@@ -252,7 +251,7 @@ int main(int argc, char **argv) {
             break;
           }
           case NET_LEAVING: {
-            printf("NET leaving, read from socket: %d\n", pollFds[i].fd);
+            printf("NET_LEAVING, successor on socket: %d is leaving\n", pollFds[i].fd);
             struct NET_LEAVING_PDU nlp;
             memcpy(&nlp, buffer, sizeof(nlp));
 
@@ -295,13 +294,17 @@ int main(int argc, char **argv) {
     }
   }
   shutdown(successorSock.socketFd, SHUT_RDWR);
-  shutdown(predecessorSock.socketFd, SHUT_RDWR);
+  if(predecessorSock.socketFd != -1){
+    shutdown(predecessorSock.socketFd, SHUT_RDWR);
+  }
   shutdown(newNodeSock.socketFd, SHUT_RDWR);
   shutdown(trackerSock.socketFd, SHUT_RDWR);
   shutdown(agentSock.socketFd, SHUT_RDWR);
 
   close(successorSock.socketFd);
-  close(predecessorSock.socketFd);
+  if(predecessorSock.socketFd != -1){
+    close(predecessorSock.socketFd);
+  }
   close(newNodeSock.socketFd);
   close(trackerSock.socketFd);
   close(agentSock.socketFd);
@@ -315,6 +318,7 @@ int main(int argc, char **argv) {
 
   free(node->ip);
   free(node);
+  printf("Node successfully left the network.\n");
   return 0;
 }
 
@@ -344,6 +348,7 @@ void lookupValue(struct VAL_LOOKUP_PDU vlp, struct node *node, int socket, int a
     /* If entry does not exist */
     if (tableEntry == NULL) {
       printf("Searched value was within hashrange but does not exist.\n");
+      memset(vlrp.ssn, 0, sizeof(vlrp.ssn));
       vlrp.name_length = 0;
       vlrp.name = NULL;
       vlrp.email_length = 0;
@@ -381,6 +386,7 @@ void lookupValue(struct VAL_LOOKUP_PDU vlp, struct node *node, int socket, int a
     sendPDU(agentSocket, address, buffer, size);
     free(vlrp.name);
     free(vlrp.email);
+    free(buffer);
 
   } else {
     /* Entry was not within the node's index-range. Send to successor. */
@@ -436,10 +442,10 @@ void removeValue(struct VAL_REMOVE_PDU vrp, struct node *node, int socket) {
 void handleValInsert(struct VAL_INSERT_PDU vip, struct node *node, int socket,
                     int size, uint8_t *buffer) {
   if (isInRange(node, (char*)vip.ssn)) {
-    // printf("Inserting value!\n");
-    // printf("SSN: %s\n", (char*)vip.ssn);
-    // printf("Name: %s\n", (char*)vip.name);
-    // printf("Email: %s\n", (char*)vip.email);
+    printf("Inserting value!\n");
+    printf("SSN: %s\n", (char*)vip.ssn);
+    printf("Name: %s\n", (char*)vip.name);
+    printf("Email: %s\n", (char*)vip.email);
     table_insert(node->hashTable, (char*)vip.ssn, (char*)vip.name, (char*)vip.email);
   } else {
     printf("Sending values to next node\n");
@@ -463,7 +469,7 @@ void handleValInsert(struct VAL_INSERT_PDU vip, struct node *node, int socket,
 int handleNetJoin(struct NET_JOIN_PDU njp, struct node *node, int socket) {
   printf("Handling NET JOIN \n");
 
-  struct NET_JOIN_RESPONSE_PDU njrp;
+  struct NET_JOIN_RESPONSE_PDU njrp = {0};
   /* One node in network */
   if(node->successor == NULL) {
     njrp.type = NET_JOIN_RESPONSE;
@@ -557,7 +563,7 @@ void leaveNetwork(int predSocket, struct node* node, int succSock) {
 
    transferTableEntries(predSocket, node);
 
-   struct NET_LEAVING_PDU nlp;
+   struct NET_LEAVING_PDU nlp = {0};
    nlp.type = NET_LEAVING;
    strcpy(nlp.next_address, node->successor->ip);
    nlp.pad = 0;
@@ -656,7 +662,7 @@ void setHashRanges(struct node *node, uint8_t *minS, uint8_t *maxS) {
 void sendNetJoin(struct NET_GET_NODE_RESPONSE_PDU ngnrp, char *ip,
                  struct socketData agentSock) {
   printf("Sending NET_JOIN to: %s, on port: %d\n", ngnrp.address, ntohs(ngnrp.port));
-  struct NET_JOIN_PDU njp;
+  struct NET_JOIN_PDU njp = {0};
   njp.type = NET_JOIN;
   strcpy(njp.src_address, (char*)ip);
   njp.PAD = 0;
